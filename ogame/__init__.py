@@ -6,6 +6,8 @@ import time
 import arrow
 import requests
 import random
+import os.path
+import pickle
 
 from ogame import constants
 from ogame.errors import BAD_UNIVERSE_NAME, BAD_DEFENSE_ID, NOT_LOGGED, BAD_CREDENTIALS, CANT_PROCESS, BAD_BUILDING_ID, BAD_SHIP_ID, BAD_RESEARCH_ID
@@ -119,22 +121,45 @@ class OGame(object):
             self.login()
             self.universe_speed = self.get_universe_speed()
 
+    def save_cookies(self, session, filename):
+        if not os.path.isdir(os.path.dirname(filename)):
+            return False
+        with open(filename, 'w') as f:
+            f.truncate()
+            pickle.dump(session.cookies._cookies, f)
+
+    def load_cookies(self, session, filename):
+        if not os.path.isfile(filename):
+            return False
+
+        with open(filename) as f:
+            cookies = pickle.load(f)
+            if cookies:
+                jar = requests.cookies.RequestsCookieJar()
+                jar._cookies = cookies
+                session.cookies = jar
+            else:
+                return False
+
     def login(self):
         """Get the ogame session token."""
         if self.server_url == '':
             self.server_url = self.get_universe_url(self.universe)
-        payload = {'kid': '',
-                   'uni': self.server_url,
-                   'login': self.username,
-                   'pass': self.password}
-        time.sleep(random.uniform(1, 5))
-        res = self.session.post(self.get_url('login'), data=payload).content
-        soup = BeautifulSoup(res, 'lxml')
-        session_found = soup.find('meta', {'name': 'ogame-session'})
-        if session_found:
-            self.ogame_session = session_found.get('content')
-        else:
-            raise BAD_CREDENTIALS
+        self.load_cookies(self.session, "C:\Users\Tobias\Desktop\session.txt")
+        if not self.is_logged():
+            payload = {'kid': '',
+                    'uni': self.server_url,
+                    'login': self.username,
+                    'pass': self.password}
+            time.sleep(random.uniform(1, 5))
+            res = self.session.post(self.get_url('login'), data=payload).content
+            soup = BeautifulSoup(res, 'lxml')
+            session_found = soup.find('meta', {'name': 'ogame-session'})
+            if session_found:
+                self.save_cookies(self.session, "C:\Users\Tobias\Desktop\session.txt")
+                self.ogame_session = session_found.get('content')
+            else:
+                raise BAD_CREDENTIALS
 
     def logout(self):
         self.session.get(self.get_url('logout'))
@@ -144,6 +169,8 @@ class OGame(object):
             html = self.session.get(self.get_url('overview')).content
         soup = BeautifulSoup(html, 'lxml')
         session = soup.find('meta', {'name': 'ogame-session'})
+        if session:
+            self.ogame_session = html
         return session is not None
 
     def get_page_content(self, page='overview', cp=None):
@@ -177,11 +204,14 @@ class OGame(object):
         """Returns the planet resources stats."""
         resources = self.fetch_resources(planet_id)
         metal      = resources['metal']['resources']['actual']
+        metal_max      = resources['metal']['resources']['max']
         crystal    = resources['crystal']['resources']['actual']
+        crystal_max = resources['crystal']['resources']['max']
         deuterium  = resources['deuterium']['resources']['actual']
+        deuterium_max  = resources['deuterium']['resources']['max']
         energy     = resources['energy']['resources']['actual']
         darkmatter = resources['darkmatter']['resources']['actual']
-        result = {'metal': metal, 'crystal': crystal, 'deuterium': deuterium,
+        result = {'metal': metal, 'metal_max': metal_max, 'crystal': crystal, 'crystal_max': crystal_max, 'deuterium': deuterium, 'deuterium_max': deuterium_max,
                   'energy': energy, 'darkmatter': darkmatter}
         return result
 
@@ -209,7 +239,7 @@ class OGame(object):
         tmp = re.search(r'textContent\[7\]="([^"]+)"', html).group(1)
         soup = BeautifulSoup(tmp, 'lxml')
         tmp = soup.text
-        infos = re.search(r'([\d\\.]+) \(Place ([\d\.]+) of ([\d\.]+)\)', tmp)
+        infos = re.search(r'([\d\\.]+) \(Platz ([\d\.]+) von ([\d\.]+)\)', tmp)
         res['points'] = parse_int(infos.group(1))
         res['rank'] = parse_int(infos.group(2))
         res['total'] = parse_int(infos.group(3))

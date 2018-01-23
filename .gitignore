@@ -6,3 +6,5 @@ dist/
 samples/
 .cache/
 bot.py
+session.txt
+planetconfigs.ini

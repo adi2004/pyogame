@@ -25,14 +25,14 @@ Buildings = {
     'Deuteriumtank': 24,
 
     # GER
-    'Metallmine': 1,
-    'Kristallmine': 2,
-    'Deuteriumsynthetisierer': 3,
-    'Solarkraftwerk': 4,
-    'Fusionskraftwerk': 12,
-    'Metallspeicher': 22,
-    'Kristallspeicher': 23,
-    'DeuteriumTank': 24
+    u'Metallmine': 1,
+    u'Kristallmine': 2,
+    u'Deuteriumsynthetisierer': 3,
+    u'Solarkraftwerk': 4,
+    u'Fusionskraftwerk': 12,
+    u'Metallspeicher': 22,
+    u'Kristallspeicher': 23,
+    u'DeuteriumTank': 24
 }
 
 
@@ -93,16 +93,16 @@ Defense = {
     'Interplanetaireraketten': 503,
 
     # GER
-    'Raketenwerfer': 401,
-    'LeichterLaser': 402,
-    'SchwererLaser': 403,
+    u'Raketenwerfer': 401,
+    u'LeichterLaser': 402,
+    u'SchwererLaser': 403,
     u'GaußKanone': 404,
-    'IonenKanone': 405,
-    'Plasmawerfer': 406,
-    'Kleine Schildkuppel': 407,
-    'Große Schildkuppel': 408,
-    'Abfangrakete': 502,
-    'Interplanetarrakete': 503
+    u'IonenKanone': 405,
+    u'Plasmawerfer': 406,
+    u'Kleine Schildkuppel': 407,
+    u'Große Schildkuppel': 408,
+    u'Abfangrakete': 502,
+    u'Interplanetarrakete': 503
 }
 
 
@@ -139,20 +139,20 @@ Ships = {
     'Interceptor': 215,
 
     # GER
-    'Kleiner Transporter': 202,
-    'Großer Transporter': 203,
-    'Leichter Jäger': 204,
-    'Schwerer Jäger': 205,
-    'Kreuzer': 206,
-    'Schlachtschiff': 207,
-    'Kolonieschiff': 208,
-    'Recycler': 209,
-    'Spionagesonde': 210,
-    'Bomber': 211,
-    'Solarsatellit': 212,
-    'Zerstörer': 213,
-    'Todesstern': 214,
-    'Schlachtkreuzer': 215
+    u'Kleiner Transporter': 202,
+    u'Großer Transporter': 203,
+    u'Leichter Jäger': 204,
+    u'Schwerer Jäger': 205,
+    u'Kreuzer': 206,
+    u'Schlachtschiff': 207,
+    u'Kolonieschiff': 208,
+    u'Recycler': 209,
+    u'Spionagesonde': 210,
+    u'Bomber': 211,
+    u'Solarsatellit': 212,
+    u'Zerstörer': 213,
+    u'Todesstern': 214,
+    u'Schlachtkreuzer': 215
 }
 
 

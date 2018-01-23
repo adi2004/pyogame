@@ -6,7 +6,8 @@ import time
 import arrow
 import requests
 import random
-import os.path
+import os
+import inspect
 import pickle
 
 from ogame import constants
@@ -105,7 +106,7 @@ def get_code(name):
 
 @for_all_methods(sandbox_decorator)
 class OGame(object):
-    def __init__(self, universe, username, password, domain='en.ogame.gameforge.com', auto_bootstrap=True, sandbox=False, sandbox_obj=None):
+    def __init__(self, universe, username, password, domain, auto_bootstrap, sandbox, sandbox_obj, cookiePath):
         self.session = requests.session()
         self.session.headers.update({'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'})
         self.sandbox = sandbox
@@ -114,6 +115,7 @@ class OGame(object):
         self.domain = domain
         self.username = username
         self.password = password
+        self.cookiePath = cookiePath
         self.universe_speed = 1
         self.server_url = ''
         self.server_tz = 'GMT+1'
@@ -145,7 +147,7 @@ class OGame(object):
         """Get the ogame session token."""
         if self.server_url == '':
             self.server_url = self.get_universe_url(self.universe)
-        self.load_cookies(self.session, "C:\Users\Tobias\Desktop\session.txt")
+        self.load_cookies(self.session, self.cookiePath)
         if not self.is_logged():
             payload = {'kid': '',
                     'uni': self.server_url,
@@ -156,7 +158,7 @@ class OGame(object):
             soup = BeautifulSoup(res, 'lxml')
             session_found = soup.find('meta', {'name': 'ogame-session'})
             if session_found:
-                self.save_cookies(self.session, "C:\Users\Tobias\Desktop\session.txt")
+                self.save_cookies(self.session, self.cookiePath)
                 self.ogame_session = session_found.get('content')
             else:
                 raise BAD_CREDENTIALS
@@ -773,6 +775,21 @@ class OGame(object):
                    'ajax': 1}
         url = self.get_url('ajaxChat')
         self.session.post(url, data=payload, headers=headers)
+
+    def getSolarPlantProduction(level=1, Ingenieur = False):
+        IngenieurBonus = 1.0
+        if Ingenieur:
+            IngenieurBonus = 1.1
+        return round( math.fabs(20 * level * 1.1 ** level ) * IngenieurBonus)
+
+    def get_solarSatelliteProduction(self, planet_max_temp, satellite_count = 1, Ingenieur = False):
+        IngenieurBonus = 1.0
+
+        if Ingenieur:
+            IngenieurBonus = 1.1
+
+        return round(math.fabs((planet_max_temp + 140) / 6) * satellite_count * IngenieurBonus)
+
 
     def galaxy_content(self, galaxy, system):
         headers = {'X-Requested-With': 'XMLHttpRequest',

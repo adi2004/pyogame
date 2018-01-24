@@ -429,6 +429,11 @@ class OGame(object):
                    'type': ship_id}
         self.session.post(url, data=payload)
 
+    def can_build(self, costs, planet_resources):
+        if planet_resources['metal'] >= costs[0] and planet_resources['crystal'] >= costs[1] and planet_resources['deuterium'] >= costs[2]:
+            return True
+        return False
+
     def build_building(self, planet_id, building_id, cancel=False):
         """Build a building."""
         if building_id not in constants.Buildings.values() and building_id not in constants.Facilities.values():
@@ -625,6 +630,10 @@ class OGame(object):
         if page == 'login':
             return 'https://{}/main/login'.format(self.domain)
         else:
+            timeout = random.randrange(1000, 3000)
+            # print "Waiting " + str(timeout) + "ms"
+            time.sleep(timeout / 1000.0)
+
             if self.server_url == '':
                 self.server_url = self.get_universe_url(self.universe)
             url = 'https://{}/game/index.php?page={}'.format(self.server_url, page)
@@ -859,3 +868,196 @@ class OGame(object):
                 planet_infos['player']['rank'] = player_rank
                 res.append(planet_infos)
         return res
+
+    def metal_mine_production(self, level, universe_speed=1):
+        return int(math.floor(30 * level * 1.1 ** level) * universe_speed)
+
+    def crystal_mine_production(self, level, universe_speed=1):
+        return int(math.floor(20 * level * 1.1 ** level) * universe_speed)
+
+    def deuterium_synthesizer_production(self, level, max_temperature, universe_speed=1):
+        return int(math.floor(10 * level * 1.1 ** level) * (1.44 - 0.004 * max_temperature) * universe_speed)
+
+    def SolarPlantProduction(self, level):
+        return int(math.floor(20 * level * 1.1 ** level))
+
+    def FusionReactorProduction(self, research_energietechnik, level, engineer=False):
+        if engineer is True:
+            return int(round(math.floor(30 * level * (1.05 + research_energietechnik * 0.01) ** level) * 1.1))
+        return int(round(math.floor(30 * level * (1.05 + research_energietechnik * 0.01) ** level) * 1.0))
+
+    def SolarSatelliteProduction(self, max_temperature, amount, engineer=False):
+        if engineer is True:
+            return int(math.floor((max_temperature + 140.0) / 6.0) * amount * 1.1)
+        return int(math.floor((max_temperature + 140) / 6) * amount)
+
+    def get_research_cost(self, research_id, targetLevel, currentLevel=-1):
+        targetKosten = [0.0, 0.0, 0.0]
+
+        metallkosten = 0.0
+        kristallkosten = 0.0
+        deuteriumkosten = 0.0
+
+        if currentLevel == -1:
+            currentLevel = targetLevel - 1
+
+        if research_id == 113:
+            metallkosten = 0.0
+            kristallkosten = 800.0 * \
+                (2 ** targetLevel) - 800.0 - \
+                (800.0 * (2 ** currentLevel) - 800.0)
+            deuteriumkosten = 400.0 * \
+                (2 ** targetLevel) - 400.0 - \
+                (400.0 * (2 ** currentLevel) - 400.0)
+        elif research_id == 120:
+            metallkosten = 200.0 * (2 ** targetLevel) - \
+                200.0 - (200.0 * (2 ** currentLevel) - 200.0)
+            kristallkosten = 100.0 * \
+                (2 ** targetLevel) - 100.0 - \
+                (100.0 * (2 ** currentLevel) - 100.0)
+            deuteriumkosten = 0.0
+        elif research_id == 121:
+            metallkosten = 1000 * (2.0 ** targetLevel) - \
+                1000 - (1000 * (2 ** currentLevel) - 1000)
+            kristallkosten = 300 * (2.0 ** targetLevel) - \
+                300 - (300 * (2 ** currentLevel) - 300)
+            deuteriumkosten = 100 * (2.0 ** targetLevel) - \
+                100 - (100 * (2 ** currentLevel) - 100)
+        elif research_id == 122:
+            metallkosten = 2000 * (2.0 ** targetLevel) - \
+                2000 - (2000 * (2 ** currentLevel) - 2000)
+            kristallkosten = 4000 * (2.0 ** targetLevel) - \
+                4000 - (4000 * (2 ** currentLevel) - 4000)
+            deuteriumkosten = 1000 * \
+                (2.0 ** targetLevel) - 1000 - \
+                (1000 * (2 ** currentLevel) - 1000)
+        elif research_id == 114:
+            metallkosten = 0.0
+            kristallkosten = 4000 * (2.0 ** targetLevel) - \
+                4000 - (4000 * (2 ** currentLevel) - 4000)
+            deuteriumkosten = 2000 * \
+                (2.0 ** targetLevel) - 2000 - \
+                (2000 * (2 ** currentLevel) - 2000)
+        elif research_id == 199:
+            metallkosten = 0.0
+            kristallkosten = 0.0
+            deuteriumkosten = 0.0
+        elif research_id == 106:
+            metallkosten = 200 * (2.0 ** targetLevel) - \
+                200 - (200 * (2 ** currentLevel) - 200)
+            kristallkosten = 1000 * (2.0 ** targetLevel) - \
+                1000 - (1000 * (2 ** currentLevel) - 1000)
+            deuteriumkosten = 200 * (2.0 ** targetLevel) - \
+                200 - (200 * (2 ** currentLevel) - 200)
+        elif research_id == 108:
+            metallkosten = 0.0
+            kristallkosten = 400 * (2.0 ** targetLevel) - \
+                400 - (400 * (2 ** currentLevel) - 400)
+            deuteriumkosten = 600 * (2.0 ** targetLevel) - \
+                600 - (600 * (2 ** currentLevel) - 600)
+        elif research_id == 124:
+            metallkosten = 16000.0 / 3 * ((1.75 ** targetLevel) - 1)
+            kristallkosten = 32000.0 / 3 * ((1.75 ** targetLevel) - 1)
+            deuteriumkosten = 16000.0 / 3 * ((1.75 ** targetLevel) - 1)
+        elif research_id == 123:
+            metallkosten = 240000 * (2.0 ** targetLevel) - \
+                240000 - (240000 * (2 ** currentLevel) - 240000)
+            kristallkosten = 400000 * \
+                (2.0 ** targetLevel) - 400000 - \
+                (400000 * (2 ** currentLevel) - 400000)
+            deuteriumkosten = 160000 * \
+                (2.0 ** targetLevel) - 160000 - \
+                (160000 * (2 ** currentLevel) - 160000)
+        elif research_id == 115:
+            metallkosten = 400 * (2.0 ** targetLevel) - \
+                400 - (400 * (2 ** currentLevel) - 400)
+            kristallkosten = 0.0
+            deuteriumkosten = 600 * (2.0 ** targetLevel) - \
+                600 - (600 * (2 ** currentLevel) - 600)
+        elif research_id == 117:
+            metallkosten = 2000 * (2.0 ** targetLevel) - \
+                2000 - (2000 * (2 ** currentLevel) - 2000)
+            kristallkosten = 4000 * (2.0 ** targetLevel) - \
+                4000 - (4000 * (2 ** currentLevel) - 4000)
+            deuteriumkosten = 600 * (2.0 ** targetLevel) - \
+                600 - (600 * (2 ** currentLevel) - 600)
+        elif research_id == 118:
+            metallkosten = 10000 * (2.0 ** targetLevel) - \
+                10000 - (10000 * (2 ** currentLevel) - 10000)
+            kristallkosten = 20000 * \
+                (2.0 ** targetLevel) - 20000 - \
+                (20000 * (2 ** currentLevel) - 20000)
+            deuteriumkosten = 6000 * \
+                (2.0 ** targetLevel) - 6000 - \
+                (6000 * (2 ** currentLevel) - 6000)
+        elif research_id == 109:
+            metallkosten = 800 * (2.0 ** targetLevel) - \
+                800 - (800 * (2 ** currentLevel) - 800)
+            kristallkosten = 200 * (2.0 ** targetLevel) - \
+                200 - (200 * (2 ** currentLevel) - 200)
+            deuteriumkosten = 0.0
+        elif research_id == 110:
+            metallkosten = 200 * (2.0 ** targetLevel) - \
+                200 - (200 * (2 ** currentLevel) - 200)
+            kristallkosten = 600 * (2.0 ** targetLevel) - \
+                600 - (600 * (2 ** currentLevel) - 600)
+            deuteriumkosten = 0.0
+        elif research_id == 111:
+            metallkosten = 1000 * (2.0 ** targetLevel) - \
+                1000 - (1000 * (2 ** currentLevel) - 1000)
+            kristallkosten = 0.0
+            deuteriumkosten = 0.0
+
+        targetKosten[0] = metallkosten
+        targetKosten[1] = kristallkosten
+        targetKosten[2] = deuteriumkosten
+
+        return targetKosten
+
+    def metal_mine_cost(self, level):
+        metal = int(60 * 1.5 ** (level - 1))
+        crystal = int(15 * 1.5 ** (level - 1))
+        deuterium = int(0)
+        return (metal, crystal, deuterium)
+
+    def crystal_mine_cost(self, level):
+        metal = int(48 * 1.6 ** (level - 1))
+        crystal = int(24 * 1.6 ** (level - 1))
+        deuterium = int(0)
+        return (metal, crystal, deuterium)
+
+    def deuterium_synthesizer_cost(self, level):
+        metal = int(225 * 1.5 ** (level - 1))
+        crystal = int(75 * 1.5 ** (level - 1))
+        deuterium = int(0)
+        return (metal, crystal, deuterium)
+
+    def solar_plant_cost(self, level, existinglevel=0):
+        metal = int(150 * ((1.5 ** level) - (1.5 ** existinglevel)))
+        crystal = int(60 * ((1.5 ** level) - (1.5 ** existinglevel)))
+        deuterium = int(0)
+        return (metal, crystal, deuterium)
+
+    def fusion_reactor_cost(self, level, existinglevel=0):
+        metal = int(1125 * ((1.8 ** level) - (1.8 ** existinglevel)))
+        crystal = int(450 * ((1.8 ** level) - (1.8 ** existinglevel)))
+        deuterium = int(225 * ((1.8 ** level) - (1.8 ** existinglevel)))
+        return (metal, crystal, deuterium)
+
+    def building_production_time(metal, crystal, level_robotics_factory, level_nanite_factory, level, universe_speed=1):
+        res = (metal + crystal) / (2500 * max(4 - level / 2, 1) * (1 +
+                                                                   level_robotics_factory) * universe_speed * 2 ** level_nanite_factory) * 3600
+        seconds = int(round(res))
+        return seconds
+
+    def building_production_time2(metal, crystal, level_robotics_factory, level_nanite_factory, level, universe_speed=1):
+        """Nanite Factories, Lunar Bases, Sensor Phalanxes, and Jumpgates do not get the MAX() time reduction, so their formula is just"""
+        res = (metal + crystal) / (2500 * (1 + level_robotics_factory)
+                                   * universe_speed * 2 ** level_nanite_factory) * 3600
+        seconds = int(round(res))
+        return seconds
+
+    def research_time(metal, crystal, research_lab_level):
+        res = (metal + crystal) / (1000 * (1 + research_lab_level))
+        seconds = int(round(res))
+        return seconds

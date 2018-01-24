@@ -27,7 +27,7 @@ Buildings = {
     # GER
     u'Metallmine': 1,
     u'Kristallmine': 2,
-    u'Deuteriumsynthetisierer': 3,
+    u'Deuterium-Synthetisierer': 3,
     u'Solarkraftwerk': 4,
     u'Fusionskraftwerk': 12,
     u'Metallspeicher': 22,
@@ -57,14 +57,14 @@ Facilities = {
     'Ruimtewerf': 36,
 
     # GER
-    'Allianzdepot': 34,
-    'Roboterfabrike': 14,
-    'Schiffswerft': 21,
-    'Forschungslabor': 31,
-    'Raketensilo': 44,
-    'Nanitenfabrik': 15,
-    'Terraformer': 33,
-    'Raumdock': 36
+    u'Allianzdepot': 34,
+    u'Roboterfabrike': 14,
+    u'Raumschiffswerft': 21,
+    u'Forschungslabor': 31,
+    u'Raketensilo': 44,
+    u'Nanitenfabrik': 15,
+    u'Terraformer': 33,
+    u'Raumdock': 36
 }
 
 

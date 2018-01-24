@@ -230,6 +230,21 @@ class OGame(object):
         universe_speed = val / metal_production
         return universe_speed
 
+    def get_count_planets(self):
+        html = self.session.get(self.get_url('overview')).content
+        if not self.is_logged(html):
+            raise NOT_LOGGED
+        soup = BeautifulSoup(html, 'lxml')
+        link = soup.find('div', {'id': 'countColonies'})
+        res = {}
+        if link is not None:
+            link = link.find('span').text           
+            infos = re.search(r'(\d+)\/(\d+)', link)
+            res['colonies_count'] = parse_int(infos.group(1))
+            res['colonies_maxcount'] = parse_int(infos.group(2))
+            return res        
+        
+
     def get_user_infos(self, html=None):
         if not html:
             html = self.session.get(self.get_url('overview')).content

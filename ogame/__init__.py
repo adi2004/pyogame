@@ -608,6 +608,65 @@ class OGame(object):
             r'(?:Flotten:)(\d+)\/(\d+)(?:Expeditionen:)(\d+)\/(\d+)', fleetStatus)
         return [int(infos.group(1)), int(infos.group(2))]
 
+    def get_fleets(self):
+        headers = {'X-Requested-With': 'XMLHttpRequest'}
+        res = self.session.get(self.get_url('eventList'), params={'ajax': 1},
+                               headers=headers).content
+        soup = BeautifulSoup(res, 'lxml')
+        if soup.find('head'):
+            raise NOT_LOGGED
+        events = soup.findAll('tr', {'class': 'eventFleet'})
+        events = filter(
+            lambda x: 'partnerInfo' not in x.get('class', []), events)
+
+        missions = []
+        for event in events:
+            mission_type = int(event['data-mission-type'])
+            mission = {}
+            mission.update({'mission_type': mission_type})
+
+            return_flight = event['data-return-flight']
+            mission.update({'return_flight': return_flight})
+
+            id = str(event['id'])
+            #id = self.get_event_id(str(event['id']))
+            mission.update({'id': id})
+
+            coords_origin = event.find('td', {'class': 'coordsOrigin'}) \
+                .text.strip()
+            coords = re.search(r'\[(\d+):(\d+):(\d+)\]', coords_origin)
+            galaxy, system, position = coords.groups()
+            mission.update(
+                {'origin': (int(galaxy), int(system), int(position))})
+
+            dest_coords = event.find(
+                'td', {'class': 'destCoords'}).text.strip()
+            coords = re.search(r'\[(\d+):(\d+):(\d+)\]', dest_coords)
+            galaxy, system, position = coords.groups()
+            mission.update(
+                {'destination': (int(galaxy), int(system), int(position))})
+
+            arrival_time = event.find(
+                'td', {'class': 'arrivalTime'}).text.strip()
+            coords = re.search(r'(\d+):(\d+):(\d+)', arrival_time)
+
+            hour, minute, second = coords.groups()
+            hour = int(hour)
+            minute = int(minute)
+            second = int(second)
+            arrival_time = self.get_datetime_from_time(hour, minute, second)
+            mission.update({'arrival_time': arrival_time})
+
+            if mission_type == 1:
+                attacker_id = event.find('a', {'class': 'sendMail'})[
+                    'data-playerid']
+                mission.update({'attacker_id': int(attacker_id)})
+            else:
+                mission.update({'attacker_id': None})
+
+            missions.append(mission)
+        return missions
+
     def get_fleet_ids(self):
         """Return the reversable fleet ids."""
         res = self.session.get(self.get_url('movement')).content

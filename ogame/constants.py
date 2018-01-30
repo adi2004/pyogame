@@ -58,7 +58,7 @@ Facilities = {
 
     # GER
     u'Allianzdepot': 34,
-    u'Roboterfabrike': 14,
+    u'Roboterfabrik': 14,
     u'Raumschiffswerft': 21,
     u'Forschungslabor': 31,
     u'Raketensilo': 44,
@@ -99,8 +99,8 @@ Defense = {
     u'GaußKanone': 404,
     u'IonenKanone': 405,
     u'Plasmawerfer': 406,
-    u'Kleine Schildkuppel': 407,
-    u'Große Schildkuppel': 408,
+    u'KleineSchildkuppel': 407,
+    u'GroßeSchildkuppel': 408,
     u'Abfangrakete': 502,
     u'Interplanetarrakete': 503
 }

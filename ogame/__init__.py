@@ -135,7 +135,12 @@ class OGame(object):
             return False
 
         with open(filename) as f:
-            cookies = pickle.load(f)
+            try:
+                cookies = pickle.load(f)
+            except ValueError:
+                # ValueError
+                cookies = None
+                f.truncate()
             if cookies:
                 jar = requests.cookies.RequestsCookieJar()
                 jar._cookies = cookies
@@ -213,8 +218,12 @@ class OGame(object):
         deuterium_max  = resources['deuterium']['resources']['max']
         energy     = resources['energy']['resources']['actual']
         darkmatter = resources['darkmatter']['resources']['actual']
-        result = {'metal': metal, 'metal_max': metal_max, 'crystal': crystal, 'crystal_max': crystal_max, 'deuterium': deuterium, 'deuterium_max': deuterium_max,
-                  'energy': energy, 'darkmatter': darkmatter}
+        metal_production = resources['metal']['resources']['production']
+        crystal_production = resources['crystal']['resources']['production']
+        deuterium_production = resources['crystal']['resources']['production']
+        dailyTotalRes = (metal_production + crystal_production + deuterium_production) * 86400
+        result = {'metal': metal, 'crystal': crystal, 'deuterium': deuterium, 'energy': energy, 'darkmatter': darkmatter, 'metal_max': metal_max, 'crystal_max': crystal_max,
+                  'deuterium_max': deuterium_max, 'metal_production': metal_production, 'crystal_production': crystal_production, 'deuterium_production': deuterium_production, 'dailyTotalRes': dailyTotalRes}
         return result
 
     def get_universe_speed(self, res=None):
@@ -572,6 +581,33 @@ class OGame(object):
         if not self.is_logged(res):
             raise NOT_LOGGED
 
+    def get_flight_duration(self, Geschwindigkeitsfaktor, Entfernung, GeschwindigkeitDesLangsamstenSchiffs, UniFleetSpeed=1):
+        #Flugzeit in Sekunden:
+        #= (3.500 / Geschwindigkeitsfaktor) * (Entfernung * 10 / GeschwindigkeitDesLangsamstenSchiffs) ^ 0,5 + 10
+        duration = ((3500 / Geschwindigkeitsfaktor) * (Entfernung * 10 /
+                                                       GeschwindigkeitDesLangsamstenSchiffs) ** 0.5 + 10) / UniFleetSpeed
+
+        return duration
+
+    def get_flight_distance(self, origin_galaxy, origin_system, origin_position, target_galaxy, target_system, target_position):
+        if origin_galaxy != target_galaxy:
+            return math.fabs(origin_galaxy - target_galaxy) * 20000
+        elif origin_system != target_system:
+            return math.fabs(origin_system - target_system) * 95 + 2700
+        elif origin_position != target_position:
+            return math.fabs(origin_position - target_position) * 5 + 1000
+        else:
+            return 5
+
+    def get_fleet_slots(self):
+        res = self.session.get(self.get_url('fleet1')).content
+        soup = BeautifulSoup(res, 'lxml')
+        fleetStatus = soup.find('div', {'class': 'fleetStatus'}).text.strip(
+        ).replace(" ", "").replace("\n", "")
+        infos = re.search(
+            r'(?:Flotten:)(\d+)\/(\d+)(?:Expeditionen:)(\d+)\/(\d+)', fleetStatus)
+        return [int(infos.group(1)), int(infos.group(2))]
+
     def get_fleet_ids(self):
         """Return the reversable fleet ids."""
         res = self.session.get(self.get_url('movement')).content
@@ -645,7 +681,7 @@ class OGame(object):
         if page == 'login':
             return 'https://{}/main/login'.format(self.domain)
         else:
-            timeout = random.randrange(1000, 3000)
+            timeout = random.randrange(100, 300)
             # print "Waiting " + str(timeout) + "ms"
             time.sleep(timeout / 1000.0)
 
@@ -720,6 +756,8 @@ class OGame(object):
         res['coordinate']['galaxy'] = int(infos.group(2))
         res['coordinate']['system'] = int(infos.group(3))
         res['coordinate']['position'] = int(infos.group(4))
+        res['coordinate']['as_string'] = str(
+            res['coordinate']['galaxy']) + ":" + str(res['coordinate']['system']) + ":" + str(res['coordinate']['position'])
         res['diameter'] = parse_int(infos.group(5))
         res['fields'] = {}
         res['fields']['built'] = int(infos.group(6))
@@ -1029,6 +1067,12 @@ class OGame(object):
 
         return targetKosten
 
+    def rocketsilo_cost(self, level):
+        metal = int(10000 * 2 ** level)
+        crystal = int(10000 * 2 ** level)
+        deuterium = int(500 * 2 ** level)
+        return (metal, crystal, deuterium)
+
     def metal_mine_cost(self, level):
         metal = int(60 * 1.5 ** (level - 1))
         crystal = int(15 * 1.5 ** (level - 1))
@@ -1076,3 +1120,8 @@ class OGame(object):
         res = (metal + crystal) / (1000 * (1 + research_lab_level))
         seconds = int(round(res))
         return seconds
+
+    def flightspeed_combustiondrive(self, shipbasespeed=0.0, level_combustion=1.0):
+        # Grundgeschwindigkeit * (1 + (0, 1 * Stufe Verbrennungstriebwerk))
+        return shipbasespeed * (1.0 + (0.1 * level_combustion))
+

@@ -147,7 +147,7 @@ class OGame(object):
         self.server_tz = 'GMT+0'
         if auto_bootstrap:
             self.login()
-            self.universe_speed = self.get_universe_speed()
+            self.universe_speed = self.general_get_universe_speed()
         if use_proxy:
             self.session.proxies.update(get_proxies(proxy_port))
 
@@ -179,7 +179,7 @@ class OGame(object):
         session = soup.find('meta', {'name': 'ogame-session'})
         return session is not None
 
-    def get_page_content(self, page='overview', cp=None):
+    def html_get_page_content(self, page='overview', cp=None):
         """Return the html of a specific page."""
         payload = {}
         if cp is not None:
@@ -222,7 +222,7 @@ class OGame(object):
                   'max_deuterium': max_deuterium}
         return result
 
-    def get_universe_speed(self, res=None):
+    def general_get_universe_speed(self, res=None):
         if not res:
             res = self.session.get(self.get_url('techtree', {'tab': 2, 'techID': 1})).content
         soup = BeautifulSoup(res, 'lxml')
@@ -235,7 +235,7 @@ class OGame(object):
         universe_speed = val / metal_production
         return universe_speed
 
-    def get_user_infos(self, html=None):
+    def general_get_user_infos(self, html=None):
         if not html:
             html = self.session.get(self.get_url('overview')).content
         if not self.is_logged(html):
@@ -421,7 +421,7 @@ class OGame(object):
         print("def post")
         self.session.post(url, data=payload)
 
-    def get_shipyard_queueSize(self, planet_id):
+    def get_shipyard_queue_size(self, planet_id):
         """Build a ship unit."""
 
         url = self.get_url('shipyard', {'cp': planet_id})
@@ -824,7 +824,7 @@ class OGame(object):
             res['temperature']['max'] = int(infos.group(9))
         return res
 
-    def get_ogame_version(self, res=None):
+    def general_get_ogame_version(self, res=None):
         """Get ogame version on your server."""
         if not res:
             res = self.session.get(self.get_url('overview')).content
@@ -847,7 +847,7 @@ class OGame(object):
             is_idle = box.find('td', {'class': 'idle'}) is not None
             res[names[idx]] = []
             if not is_idle:
-                name = box.find('th').text.encode('utf8')
+                name = box.find('th').text #.encode('utf8')
                 short_name = ''.join(name.split())
                 code = get_code(short_name)
                 desc = box.find('td', {'class': 'desc'}).text
@@ -864,7 +864,7 @@ class OGame(object):
                             quantity = parse_int(link.text)
                             img = td_element.find('img')
                             alt = img['alt']
-                            short_name = unicode(''.join(alt.split())).encode('utf-8')
+                            short_name = ''.join(alt.split()) #.encode('utf-8')
                             code = get_code(short_name)
                             tmp.append({'name': short_name, 'code': code, 'quantity': quantity})
                 res[names[idx]] = tmp
@@ -894,7 +894,7 @@ class OGame(object):
         url = self.get_url('ajaxChat')
         self.session.post(url, data=payload, headers=headers)
 
-    def galaxy_content(self, galaxy, system):
+    def html_galaxy_content(self, galaxy, system):
         headers = {'X-Requested-With': 'XMLHttpRequest',
                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}
         payload = {'galaxy': galaxy, 'system': system}
@@ -918,7 +918,7 @@ class OGame(object):
 
         return empty_positions
 
-    def get_spy_reports(self):
+    def html_spy_reports(self):
         headers = {'X-Requested-With': 'XMLHttpRequest'}
         payload = {'tab': 20,
                    'ajax': 1}
@@ -1088,7 +1088,7 @@ class OGame(object):
         headers = {'X-Requested-With': 'XMLHttpRequest'}
         res = self.session.post(url, headers=headers, data=payload).content
 
-    def get_ip(self):
+    def general_get_ip(self):
         res = self.session.get('http://ifconfig.me/ip')
         return 'ip session: {}'.format(res.text.strip())
 
@@ -1112,27 +1112,26 @@ class OGame(object):
         delete_action = self.session.post(self.get_url('planetGiveup'), headers=headers, data=delete_payload).content
 
 
-    def Consommation(self, type, batiment, lvl):
-
+    def calc_consomation(self, page_string, building_string, lvl):
         """ Retourne la consommation du batiment du level lvl + 1 """
-        energieLvl = constants.Formules[type][batiment]['consommation'][0] * lvl * (
-            constants.Formules[type][batiment]['consommation'][1] ** lvl)
-        energieNextLvl = constants.Formules[type][batiment]['consommation'][0] * (lvl + 1) * (
-            constants.Formules[type][batiment]['consommation'][1] ** (lvl + 1))
+        energieLvl = constants.Formules[page_string][building_string]['consommation'][0] * lvl * (
+                constants.Formules[page_string][building_string]['consommation'][1] ** lvl)
+        energieNextLvl = constants.Formules[page_string][building_string]['consommation'][0] * (lvl + 1) * (
+                constants.Formules[page_string][building_string]['consommation'][1] ** (lvl + 1))
         return math.floor(energieNextLvl - energieLvl)
 
-    def building_cost(self, type, batiment, lvl):
-        """ Retourne le cout d'un batiment lvl + 1 """
+    def calc_building_cost(self, building, lvl):
+        """ Retourne le cout d'un building_string lvl + 1 """
         cost = {}
-        cost['metal'] = int(math.floor(constants.Formules[type][batiment]['cout']['Metal'][0] *
-                                       constants.Formules[type][batiment]['cout']['Metal'][1] ** (lvl - 1)))
-        cost['crystal'] = int(math.floor(constants.Formules[type][batiment]['cout']['Crystal'][0] *
-                                         constants.Formules[type][batiment]['cout']['Crystal'][1] ** (lvl - 1)))
-        cost['deuterium'] = int(math.floor(constants.Formules[type][batiment]['cout']['Deuterium'][0] *
-                                           constants.Formules[type][batiment]['cout']['Deuterium'][1] ** (lvl - 1)))
+        cost['metal'] = int(math.floor(constants.Formules[building]['cout']['metal'][0] *
+                                       constants.Formules[building]['cout']['metal'][1] ** (lvl - 1)))
+        cost['crystal'] = int(math.floor(constants.Formules[building]['cout']['crystal'][0] *
+                                         constants.Formules[building]['cout']['crystal'][1] ** (lvl - 1)))
+        cost['deuterium'] = int(math.floor(constants.Formules[building]['cout']['deuterium'][0] *
+                                           constants.Formules[building]['cout']['deuterium'][1] ** (lvl - 1)))
         return cost
 
-    def building_time(self, cost, robotics, nano, speed):
+    def calc_building_time(self, cost, robotics, nano, speed):
         costSum = cost['metal'] + cost['crystal']
         buildTime = (costSum) / (2500 * (1 + robotics
                                          * (2 ** nano) * speed))
@@ -1140,7 +1139,7 @@ class OGame(object):
         # Time hours = Metal + crystal /   (  2500 * ( 1+ robotics * 2^nano * serverspeed )
         return buildTime
 
-    def getProduction(self, type, batiment, lvl):
+    def calc_production(self, type, batiment, lvl):
         """ Retourne le cout d'un batiment lvl + 1 """
         production = 0
         production = (self.universe_speed * constants.Formules[type][batiment]['production'][0] * lvl *
@@ -1149,13 +1148,13 @@ class OGame(object):
 
         return production
 
-    def storageSize(self, type, batiment, lvl):
+    def calc_storage_size(self, lvl):
         capacity = -1
         capacity = 5000 * int(math.floor(2.5 * (math.e ** (lvl * 20 / 33))))
         return capacity
 
     def galaxy_infos(self, galaxy, system):
-        html = self.galaxy_content(galaxy, system)['galaxy']
+        html = self.html_galaxy_content(galaxy, system)['galaxy']
         soup = BeautifulSoup(html, 'lxml')
         rows = soup.findAll('tr', {'class': 'row'})
         res = []
@@ -1184,32 +1183,35 @@ class OGame(object):
                 planet_infos['coordinate']['galaxy'] = int(galaxy)
                 planet_infos['coordinate']['system'] = int(system)
                 planet_infos['coordinate']['position'] = int(position)
-                if len(tooltips) > 2:
-                    for i in range(1, 3):
-                        player_tooltip = tooltips[i]
-                        player_id_raw = player_tooltip.get('id')
-                        if player_id_raw.startswith('debris'):
-                            continue
+                player_id = 9999
+                player_name = "_9999_"
+                player_rank = 9999
+                metal_debris = 0
+                crystal_debris = 0
+                recyclers_needed = 0
+                for i in range(1, len(tooltips)):
+                    player_tooltip = tooltips[i]
+                    player_id_raw = player_tooltip.get('id')
+                    if player_id_raw.startswith('player'):
                         player_id = int(re.search(r'player(\d+)', player_id_raw).groups()[0])
                         player_name = player_tooltip.find('h1').find('span').text
-                        player_rank = parse_int(player_tooltip.find('li', {'class': 'rank'}).find('a').text)
-                        break
-                elif len(tooltips) > 1:
-                    player_tooltip = tooltips[1]
-                    player_id_raw = player_tooltip.get('id')
-                    if "player" not in player_id_raw:
-                        continue
-                    player_id = int(re.search(r'player(\d+)', player_id_raw).groups()[0])
-                    player_name = player_tooltip.find('h1').find('span').text
-                    player_rank = parse_int(player_tooltip.find('li', {'class': 'rank'}).find('a').text)
-                else:
-                    player_id = None
-                    player_name = row.find('td', {'class': 'playername'}).find('span').text.strip()
-                    player_rank = None
+                        rank = player_tooltip.find('li', {'class': 'rank'})
+                        if rank is None:
+                            player_rank = 9999
+                        else:
+                            player_rank = parse_int(rank.find('a').text)
+                    if player_id_raw.startswith('debris'):
+                        txt = tooltips[i].text
+                        metal_debris = int(re.search(r'Metal: ([\d\.]+)', txt).groups()[0].replace(".", ""))
+                        crystal_debris = int(re.search(r'Crystal: ([\d\.]+)', txt).groups()[0].replace(".", ""))
+                        recyclers_needed = int(re.search(r'Recyclers needed: ([\d\.]+)', txt).groups()[0].replace(".", ""))
                 planet_infos['player'] = {}
                 planet_infos['player']['id'] = player_id
                 planet_infos['player']['name'] = player_name
                 planet_infos['player']['rank'] = player_rank
+                planet_infos["metal_debris"] = metal_debris
+                planet_infos["crystal_debris"] = crystal_debris
+                planet_infos["recyclers_needed"] = recyclers_needed
                 res.append(planet_infos)
         return res
 

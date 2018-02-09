@@ -906,6 +906,24 @@ class OGame(object):
             raise NOT_LOGGED
         return obj
 
+    def galaxy_infos(self, galaxy, system):
+        html = self.galaxy_content(galaxy, system)['galaxy']
+        soup = BeautifulSoup(html, 'lxml')
+        rows = soup.findAll('tr', {'class': 'row'})
+        res = []
+        for position, row in enumerate(rows):
+            player_obj = {'player': None, 'galaxy': galaxy, 'system': system, 'position': position + 1, 'status': 'a',
+                          'planet': None, 'moon': None, 'debris': None}
+            if 'empty_filter' in row.get('class'):
+                res.append(player_obj)
+                continue
+
+            if 'empty_filter' not in row.get('class'):
+                player_obj['player'] = 'Occupied'
+
+            res.append(player_obj)
+
+        return res
 
     def find_empty_slots(self, html):
         soup = BeautifulSoup(html, 'lxml')
@@ -1036,7 +1054,8 @@ class OGame(object):
 
         html = self.session.get(self.get_url(building_url, {'cp': planet_id})).content
         soup = BeautifulSoup(html, 'lxml')
-        is_free = soup.find('div', {'class': '{}{}'.format(building_type, building)}).find('a', {'class': 'fastBuild'})
+        item_div = soup.find('div', {'class': '{}{}'.format(building_type, building)})
+        is_free = item_div.find('a', {'class': 'fastBuild'})
         if is_free is not None:
             return True
         else:
@@ -1064,8 +1083,8 @@ class OGame(object):
         if ship_code in [204, 205, 206, 207, 213, 214, 215, 211]:
             ship_type = 'military'
 
-        in_construction = soup.find('div', {'class': '{}{}'.format(ship_type, ship_code)}).find('div',
-                                                                                           {'class': 'construction'})
+        in_construction = soup.find('div', {'class': '{}{}'.format(ship_type, ship_code)}).find('div', {
+            'class': 'construction'})
         parent_class = soup.find('div', {'class': '{}{}'.format(ship_type, ship_code)}).parent.attrs['class']
         if in_construction is not None or parent_class == 'off':
             return False
@@ -1273,3 +1292,18 @@ class OGame(object):
 
         return data
 
+    def get_max_colonies(self):
+        astro_level = self.get_research()['astrophysics']
+        if astro_level % 2 == 1:
+            astro_level = astro_level + 1
+
+        return astro_level / 2
+
+    def can_colonize_more_planets(self):
+        planet_list = self.get_planet_ids()
+        max_colonies = self.get_max_colonies()
+
+        if len(planet_list) < max_colonies:
+            return True
+        else:
+            return False

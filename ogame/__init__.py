@@ -10,6 +10,9 @@ import requests
 import json
 import pickle
 import random
+import os
+import inspect
+import pickle
 
 from ogame import constants
 from ogame.errors import BAD_UNIVERSE_NAME, BAD_DEFENSE_ID, NOT_LOGGED, BAD_CREDENTIALS, CANT_PROCESS, BAD_BUILDING_ID, \
@@ -131,8 +134,7 @@ def get_code(name):
 
 @for_all_methods(sandbox_decorator)
 class OGame(object):
-    def __init__(self, universe, username, password, domain='en.ogame.gameforge.com', auto_bootstrap=True,
-                 sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050):
+    def __init__(self, universe, username, password, domain='en.ogame.gameforge.com', auto_bootstrap=True, sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="."):
         self.session = requests.session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:57.0) Gecko/20100101 Firefox/57.0'})
@@ -142,6 +144,7 @@ class OGame(object):
         self.domain = domain
         self.username = username
         self.password = password
+        self.cookiePath = cookiePath
         self.universe_speed = 1
         self.server_url = ''
         self.server_tz = 'GMT+0'
@@ -151,22 +154,50 @@ class OGame(object):
         if use_proxy:
             self.session.proxies.update(get_proxies(proxy_port))
 
+    def save_cookies(self, session, filename):
+        if not os.path.isdir(os.path.dirname(filename)):
+            return False
+        with open(filename, 'w') as f:
+            f.truncate()
+            pickle.dump(session.cookies._cookies, f)
+
+    def load_cookies(self, session, filename):
+        if not os.path.isfile(filename):
+            return False
+
+        with open(filename) as f:
+            try:
+                cookies = pickle.load(f)
+            except ValueError:
+                # ValueError
+                cookies = None
+                f.truncate()
+            if cookies:
+                jar = requests.cookies.RequestsCookieJar()
+                jar._cookies = cookies
+                session.cookies = jar
+            else:
+                return False
+
     def login(self):
         """Get the ogame session token."""
         if self.server_url == '':
             self.server_url = self.get_universe_url(self.universe)
-        payload = {'kid': '',
-                   'uni': self.server_url,
-                   'login': self.username,
-                   'pass': self.password}
-        time.sleep(random.uniform(5, 10))
-        res = self.session.post(self.get_url('login'), data=payload).content
-        soup = BeautifulSoup(res, 'lxml')
-        session_found = soup.find('meta', {'name': 'ogame-session'})
-        if session_found:
-            self.ogame_session = session_found.get('content')
-        else:
-            raise BAD_CREDENTIALS
+        self.load_cookies(self.session, self.cookiePath)
+        if not self.is_logged():
+            payload = {'kid': '',
+                    'uni': self.server_url,
+                    'login': self.username,
+                    'pass': self.password}
+            time.sleep(random.uniform(1, 5))
+            res = self.session.post(self.get_url('login'), data=payload).content
+            soup = BeautifulSoup(res, 'lxml')
+            session_found = soup.find('meta', {'name': 'ogame-session'})
+            if session_found:
+                self.save_cookies(self.session, self.cookiePath)
+                self.ogame_session = session_found.get('content')
+            else:
+                raise BAD_CREDENTIALS
 
     def logout(self):
         self.session.get(self.get_url('logout'))
@@ -177,6 +208,8 @@ class OGame(object):
             html = self.session.get(self.get_url('overview')).content
         soup = BeautifulSoup(html, 'lxml')
         session = soup.find('meta', {'name': 'ogame-session'})
+        if session:
+            self.ogame_session = html
         return session is not None
 
     def html_get_page_content(self, page='overview', cp=None):
@@ -210,16 +243,31 @@ class OGame(object):
         """Returns the planet resources stats."""
         resources = self.fetch_resources(planet_id)
         metal = resources['metal']['resources']['actual']
-        max_metal = resources['metal']['resources']['max']
+        metal_max = resources['metal']['resources']['max']
         crystal = resources['crystal']['resources']['actual']
-        max_crystal = resources['crystal']['resources']['max']
-        deuterium = resources['deuterium']['resources']['actual']
-        max_deuterium = resources['deuterium']['resources']['max']
+        crystal_max = resources['crystal']['resources']['max']
+        deuterium  = resources['deuterium']['resources']['actual']
+        deuterium_max  = resources['deuterium']['resources']['max']
         energy = resources['energy']['resources']['actual']
         darkmatter = resources['darkmatter']['resources']['actual']
-        result = {'metal': metal, 'crystal': crystal, 'deuterium': deuterium,
-                  'energy': energy, 'darkmatter': darkmatter, 'max_metal': max_metal, 'max_crystal': max_crystal,
-                  'max_deuterium': max_deuterium}
+        metal_production = resources['metal']['resources']['production']
+        crystal_production = resources['crystal']['resources']['production']
+        deuterium_production = resources['crystal']['resources']['production']
+        dailyTotalRes = (metal_production + crystal_production + deuterium_production) * 86400
+        result = {
+            'metal': metal,
+            'crystal': crystal,
+            'deuterium': deuterium,
+            'energy': energy,
+            'darkmatter': darkmatter,
+            'metal_max': metal_max,
+            'crystal_max': crystal_max,
+            'deuterium_max': deuterium_max,
+            'metal_production': metal_production,
+            'crystal_production': crystal_production,
+            'deuterium_production': deuterium_production,
+            'dailyTotalRes': dailyTotalRes
+        }
         return result
 
     def general_get_universe_speed(self, res=None):
@@ -234,6 +282,21 @@ class OGame(object):
         metal_production = metal_mine_production(level, 1)
         universe_speed = val / metal_production
         return universe_speed
+
+    def get_count_planets(self):
+        html = self.session.get(self.get_url('overview')).content
+        if not self.is_logged(html):
+            raise NOT_LOGGED
+        soup = BeautifulSoup(html, 'lxml')
+        link = soup.find('div', {'id': 'countColonies'})
+        res = {}
+        if link is not None:
+            link = link.find('span').text
+            infos = re.search(r'(\d+)\/(\d+)', link)
+            res['colonies_count'] = parse_int(infos.group(1))
+            res['colonies_maxcount'] = parse_int(infos.group(2))
+            return res
+
 
     def general_get_user_infos(self, html=None):
         if not html:
@@ -493,6 +556,11 @@ class OGame(object):
                    'type': ship_id}
         self.session.post(url, data=payload)
 
+    def can_build(self, costs, planet_resources):
+        if planet_resources['metal'] >= costs[0] and planet_resources['crystal'] >= costs[1] and planet_resources['deuterium'] >= costs[2]:
+            return True
+        return False
+
     def build_building(self, planet_id, building_id, cancel=False):
         """Build a building."""
         if building_id not in constants.Buildings.values() and building_id not in constants.Facilities.values():
@@ -614,6 +682,92 @@ class OGame(object):
         res = self.session.get(self.get_url('movement') + '&return={}'.format(fleet_id)).content
         if not self.is_logged(res):
             raise NOT_LOGGED
+
+    def get_flight_duration(self, Geschwindigkeitsfaktor, Entfernung, GeschwindigkeitDesLangsamstenSchiffs, UniFleetSpeed=1):
+        #Flugzeit in Sekunden:
+        #= (3.500 / Geschwindigkeitsfaktor) * (Entfernung * 10 / GeschwindigkeitDesLangsamstenSchiffs) ^ 0,5 + 10
+        duration = ((3500 / Geschwindigkeitsfaktor) * (Entfernung * 10 /
+                                                       GeschwindigkeitDesLangsamstenSchiffs) ** 0.5 + 10) / UniFleetSpeed
+
+        return duration
+
+    def get_flight_distance(self, origin_galaxy, origin_system, origin_position, target_galaxy, target_system, target_position):
+        if origin_galaxy != target_galaxy:
+            return math.fabs(origin_galaxy - target_galaxy) * 20000
+        elif origin_system != target_system:
+            return math.fabs(origin_system - target_system) * 95 + 2700
+        elif origin_position != target_position:
+            return math.fabs(origin_position - target_position) * 5 + 1000
+        else:
+            return 5
+
+    def get_fleet_slots(self):
+        res = self.session.get(self.get_url('fleet1')).content
+        soup = BeautifulSoup(res, 'lxml')
+        fleetStatus = soup.find('div', {'class': 'fleetStatus'}).text.strip(
+        ).replace(" ", "").replace("\n", "")
+        infos = re.search(
+            r'(?:Flotten:)(\d+)\/(\d+)(?:Expeditionen:)(\d+)\/(\d+)', fleetStatus)
+        return [int(infos.group(1)), int(infos.group(2))]
+
+    def get_fleets(self):
+        headers = {'X-Requested-With': 'XMLHttpRequest'}
+        res = self.session.get(self.get_url('eventList'), params={'ajax': 1},
+                               headers=headers).content
+        soup = BeautifulSoup(res, 'lxml')
+        if soup.find('head'):
+            raise NOT_LOGGED
+        events = soup.findAll('tr', {'class': 'eventFleet'})
+        events = filter(
+            lambda x: 'partnerInfo' not in x.get('class', []), events)
+
+        missions = []
+        for event in events:
+            mission_type = int(event['data-mission-type'])
+            mission = {}
+            mission.update({'mission_type': mission_type})
+
+            return_flight = event['data-return-flight']
+            mission.update({'return_flight': return_flight})
+
+            id = str(event['id'])
+            #id = self.get_event_id(str(event['id']))
+            mission.update({'id': id})
+
+            coords_origin = event.find('td', {'class': 'coordsOrigin'}) \
+                .text.strip()
+            coords = re.search(r'\[(\d+):(\d+):(\d+)\]', coords_origin)
+            galaxy, system, position = coords.groups()
+            mission.update(
+                {'origin': (int(galaxy), int(system), int(position))})
+
+            dest_coords = event.find(
+                'td', {'class': 'destCoords'}).text.strip()
+            coords = re.search(r'\[(\d+):(\d+):(\d+)\]', dest_coords)
+            galaxy, system, position = coords.groups()
+            mission.update(
+                {'destination': (int(galaxy), int(system), int(position))})
+
+            arrival_time = event.find(
+                'td', {'class': 'arrivalTime'}).text.strip()
+            coords = re.search(r'(\d+):(\d+):(\d+)', arrival_time)
+
+            hour, minute, second = coords.groups()
+            hour = int(hour)
+            minute = int(minute)
+            second = int(second)
+            arrival_time = self.get_datetime_from_time(hour, minute, second)
+            mission.update({'arrival_time': arrival_time})
+
+            if mission_type == 1:
+                attacker_id = event.find('a', {'class': 'sendMail'})[
+                    'data-playerid']
+                mission.update({'attacker_id': int(attacker_id)})
+            else:
+                mission.update({'attacker_id': None})
+
+            missions.append(mission)
+        return missions
 
     def get_fleet_ids(self):
         """Return the reversable fleet ids."""
@@ -737,6 +891,10 @@ class OGame(object):
         if page == 'login':
             return 'https://{}/main/login'.format(self.domain)
         else:
+            timeout = random.randrange(100, 300)
+            # print "Waiting " + str(timeout) + "ms"
+            time.sleep(timeout / 1000.0)
+
             if self.server_url == '':
                 self.server_url = self.get_universe_url(self.universe)
             url = 'https://{}/game/index.php?page={}'.format(self.server_url, page)
@@ -813,6 +971,8 @@ class OGame(object):
         res['coordinate']['galaxy'] = int(infos.group(2))
         res['coordinate']['system'] = int(infos.group(3))
         res['coordinate']['position'] = int(infos.group(4))
+        res['coordinate']['as_string'] = str(
+            res['coordinate']['galaxy']) + ":" + str(res['coordinate']['system']) + ":" + str(res['coordinate']['position'])
         res['diameter'] = parse_int(infos.group(5))
         res['fields'] = {}
         res['fields']['built'] = int(infos.group(6))
@@ -893,6 +1053,21 @@ class OGame(object):
                    'ajax': 1}
         url = self.get_url('ajaxChat')
         self.session.post(url, data=payload, headers=headers)
+
+    def getSolarPlantProduction(level=1, Ingenieur = False):
+        IngenieurBonus = 1.0
+        if Ingenieur:
+            IngenieurBonus = 1.1
+        return round( math.fabs(20 * level * 1.1 ** level ) * IngenieurBonus)
+
+    def get_solarSatelliteProduction(self, planet_max_temp, satellite_count = 1, Ingenieur = False):
+        IngenieurBonus = 1.0
+
+        if Ingenieur:
+            IngenieurBonus = 1.1
+
+        return round(math.fabs((planet_max_temp + 140) / 6) * satellite_count * IngenieurBonus)
+
 
     def html_galaxy_content(self, galaxy, system):
         headers = {'X-Requested-With': 'XMLHttpRequest',
@@ -1307,3 +1482,206 @@ class OGame(object):
             return True
         else:
             return False
+
+    def metal_mine_production(self, level, universe_speed=1):
+        return int(math.floor(30 * level * 1.1 ** level) * universe_speed)
+
+    def crystal_mine_production(self, level, universe_speed=1):
+        return int(math.floor(20 * level * 1.1 ** level) * universe_speed)
+
+    def deuterium_synthesizer_production(self, level, max_temperature, universe_speed=1):
+        return int(math.floor(10 * level * 1.1 ** level) * (1.44 - 0.004 * max_temperature) * universe_speed)
+
+    def SolarPlantProduction(self, level):
+        return int(math.floor(20 * level * 1.1 ** level))
+
+    def FusionReactorProduction(self, research_energietechnik, level, engineer=False):
+        if engineer is True:
+            return int(round(math.floor(30 * level * (1.05 + research_energietechnik * 0.01) ** level) * 1.1))
+        return int(round(math.floor(30 * level * (1.05 + research_energietechnik * 0.01) ** level) * 1.0))
+
+    def SolarSatelliteProduction(self, max_temperature, amount, engineer=False):
+        if engineer is True:
+            return int(math.floor((max_temperature + 140.0) / 6.0) * amount * 1.1)
+        return int(math.floor((max_temperature + 140) / 6) * amount)
+
+    def get_research_cost(self, research_id, targetLevel, currentLevel=-1):
+        targetKosten = [0.0, 0.0, 0.0]
+
+        metallkosten = 0.0
+        kristallkosten = 0.0
+        deuteriumkosten = 0.0
+
+        if currentLevel == -1:
+            currentLevel = targetLevel - 1
+
+        if research_id == 113:
+            metallkosten = 0.0
+            kristallkosten = 800.0 * \
+                (2 ** targetLevel) - 800.0 - \
+                (800.0 * (2 ** currentLevel) - 800.0)
+            deuteriumkosten = 400.0 * \
+                (2 ** targetLevel) - 400.0 - \
+                (400.0 * (2 ** currentLevel) - 400.0)
+        elif research_id == 120:
+            metallkosten = 200.0 * (2 ** targetLevel) - \
+                200.0 - (200.0 * (2 ** currentLevel) - 200.0)
+            kristallkosten = 100.0 * \
+                (2 ** targetLevel) - 100.0 - \
+                (100.0 * (2 ** currentLevel) - 100.0)
+            deuteriumkosten = 0.0
+        elif research_id == 121:
+            metallkosten = 1000 * (2.0 ** targetLevel) - \
+                1000 - (1000 * (2 ** currentLevel) - 1000)
+            kristallkosten = 300 * (2.0 ** targetLevel) - \
+                300 - (300 * (2 ** currentLevel) - 300)
+            deuteriumkosten = 100 * (2.0 ** targetLevel) - \
+                100 - (100 * (2 ** currentLevel) - 100)
+        elif research_id == 122:
+            metallkosten = 2000 * (2.0 ** targetLevel) - \
+                2000 - (2000 * (2 ** currentLevel) - 2000)
+            kristallkosten = 4000 * (2.0 ** targetLevel) - \
+                4000 - (4000 * (2 ** currentLevel) - 4000)
+            deuteriumkosten = 1000 * \
+                (2.0 ** targetLevel) - 1000 - \
+                (1000 * (2 ** currentLevel) - 1000)
+        elif research_id == 114:
+            metallkosten = 0.0
+            kristallkosten = 4000 * (2.0 ** targetLevel) - \
+                4000 - (4000 * (2 ** currentLevel) - 4000)
+            deuteriumkosten = 2000 * \
+                (2.0 ** targetLevel) - 2000 - \
+                (2000 * (2 ** currentLevel) - 2000)
+        elif research_id == 199:
+            metallkosten = 0.0
+            kristallkosten = 0.0
+            deuteriumkosten = 0.0
+        elif research_id == 106:
+            metallkosten = 200 * (2.0 ** targetLevel) - \
+                200 - (200 * (2 ** currentLevel) - 200)
+            kristallkosten = 1000 * (2.0 ** targetLevel) - \
+                1000 - (1000 * (2 ** currentLevel) - 1000)
+            deuteriumkosten = 200 * (2.0 ** targetLevel) - \
+                200 - (200 * (2 ** currentLevel) - 200)
+        elif research_id == 108:
+            metallkosten = 0.0
+            kristallkosten = 400 * (2.0 ** targetLevel) - \
+                400 - (400 * (2 ** currentLevel) - 400)
+            deuteriumkosten = 600 * (2.0 ** targetLevel) - \
+                600 - (600 * (2 ** currentLevel) - 600)
+        elif research_id == 124:
+            metallkosten = 16000.0 / 3 * ((1.75 ** targetLevel) - 1)
+            kristallkosten = 32000.0 / 3 * ((1.75 ** targetLevel) - 1)
+            deuteriumkosten = 16000.0 / 3 * ((1.75 ** targetLevel) - 1)
+        elif research_id == 123:
+            metallkosten = 240000 * (2.0 ** targetLevel) - \
+                240000 - (240000 * (2 ** currentLevel) - 240000)
+            kristallkosten = 400000 * \
+                (2.0 ** targetLevel) - 400000 - \
+                (400000 * (2 ** currentLevel) - 400000)
+            deuteriumkosten = 160000 * \
+                (2.0 ** targetLevel) - 160000 - \
+                (160000 * (2 ** currentLevel) - 160000)
+        elif research_id == 115:
+            metallkosten = 400 * (2.0 ** targetLevel) - \
+                400 - (400 * (2 ** currentLevel) - 400)
+            kristallkosten = 0.0
+            deuteriumkosten = 600 * (2.0 ** targetLevel) - \
+                600 - (600 * (2 ** currentLevel) - 600)
+        elif research_id == 117:
+            metallkosten = 2000 * (2.0 ** targetLevel) - \
+                2000 - (2000 * (2 ** currentLevel) - 2000)
+            kristallkosten = 4000 * (2.0 ** targetLevel) - \
+                4000 - (4000 * (2 ** currentLevel) - 4000)
+            deuteriumkosten = 600 * (2.0 ** targetLevel) - \
+                600 - (600 * (2 ** currentLevel) - 600)
+        elif research_id == 118:
+            metallkosten = 10000 * (2.0 ** targetLevel) - \
+                10000 - (10000 * (2 ** currentLevel) - 10000)
+            kristallkosten = 20000 * \
+                (2.0 ** targetLevel) - 20000 - \
+                (20000 * (2 ** currentLevel) - 20000)
+            deuteriumkosten = 6000 * \
+                (2.0 ** targetLevel) - 6000 - \
+                (6000 * (2 ** currentLevel) - 6000)
+        elif research_id == 109:
+            metallkosten = 800 * (2.0 ** targetLevel) - \
+                800 - (800 * (2 ** currentLevel) - 800)
+            kristallkosten = 200 * (2.0 ** targetLevel) - \
+                200 - (200 * (2 ** currentLevel) - 200)
+            deuteriumkosten = 0.0
+        elif research_id == 110:
+            metallkosten = 200 * (2.0 ** targetLevel) - \
+                200 - (200 * (2 ** currentLevel) - 200)
+            kristallkosten = 600 * (2.0 ** targetLevel) - \
+                600 - (600 * (2 ** currentLevel) - 600)
+            deuteriumkosten = 0.0
+        elif research_id == 111:
+            metallkosten = 1000 * (2.0 ** targetLevel) - \
+                1000 - (1000 * (2 ** currentLevel) - 1000)
+            kristallkosten = 0.0
+            deuteriumkosten = 0.0
+
+        targetKosten[0] = metallkosten
+        targetKosten[1] = kristallkosten
+        targetKosten[2] = deuteriumkosten
+
+        return targetKosten
+
+    def rocketsilo_cost(self, level):
+        metal = int(10000 * 2 ** level)
+        crystal = int(10000 * 2 ** level)
+        deuterium = int(500 * 2 ** level)
+        return (metal, crystal, deuterium)
+
+    def metal_mine_cost(self, level):
+        metal = int(60 * 1.5 ** (level - 1))
+        crystal = int(15 * 1.5 ** (level - 1))
+        deuterium = int(0)
+        return (metal, crystal, deuterium)
+
+    def crystal_mine_cost(self, level):
+        metal = int(48 * 1.6 ** (level - 1))
+        crystal = int(24 * 1.6 ** (level - 1))
+        deuterium = int(0)
+        return (metal, crystal, deuterium)
+
+    def deuterium_synthesizer_cost(self, level):
+        metal = int(225 * 1.5 ** (level - 1))
+        crystal = int(75 * 1.5 ** (level - 1))
+        deuterium = int(0)
+        return (metal, crystal, deuterium)
+
+    def solar_plant_cost(self, level, existinglevel=0):
+        metal = int(150 * ((1.5 ** level) - (1.5 ** existinglevel)))
+        crystal = int(60 * ((1.5 ** level) - (1.5 ** existinglevel)))
+        deuterium = int(0)
+        return (metal, crystal, deuterium)
+
+    def fusion_reactor_cost(self, level, existinglevel=0):
+        metal = int(1125 * ((1.8 ** level) - (1.8 ** existinglevel)))
+        crystal = int(450 * ((1.8 ** level) - (1.8 ** existinglevel)))
+        deuterium = int(225 * ((1.8 ** level) - (1.8 ** existinglevel)))
+        return (metal, crystal, deuterium)
+
+    def building_production_time(metal, crystal, level_robotics_factory, level_nanite_factory, level, universe_speed=1):
+        res = (metal + crystal) / (2500 * max(4 - level / 2, 1) * (1 +
+                                                                   level_robotics_factory) * universe_speed * 2 ** level_nanite_factory) * 3600
+        seconds = int(round(res))
+        return seconds
+
+    def building_production_time2(metal, crystal, level_robotics_factory, level_nanite_factory, level, universe_speed=1):
+        """Nanite Factories, Lunar Bases, Sensor Phalanxes, and Jumpgates do not get the MAX() time reduction, so their formula is just"""
+        res = (metal + crystal) / (2500 * (1 + level_robotics_factory)
+                                   * universe_speed * 2 ** level_nanite_factory) * 3600
+        seconds = int(round(res))
+        return seconds
+
+    def research_time(metal, crystal, research_lab_level):
+        res = (metal + crystal) / (1000 * (1 + research_lab_level))
+        seconds = int(round(res))
+        return seconds
+
+    def flightspeed_combustiondrive(self, shipbasespeed=0.0, level_combustion=1.0):
+        # Grundgeschwindigkeit * (1 + (0, 1 * Stufe Verbrennungstriebwerk))
+        return shipbasespeed * (1.0 + (0.1 * level_combustion))

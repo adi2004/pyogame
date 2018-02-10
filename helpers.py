@@ -46,9 +46,9 @@ def print_planet(p):
     s_info = "%3d℃, %2df " % (info["temperature"]["max"], info["fields"]["total"] - info["fields"]["built"])
 
     # resources formatting
-    metal = format_number(info["metal"], info['max_metal'])
-    crystal = format_number(info["crystal"], info['max_crystal'])
-    deuterium = format_number(info["deuterium"], info['max_deuterium'])
+    metal = format_number(info["metal"], info['metal_max'])
+    crystal = format_number(info["crystal"], info['crystal_max'])
+    deuterium = format_number(info["deuterium"], info['deuterium_max'])
 
     e = info["energy"]
     energy = "%d" % e
@@ -140,13 +140,13 @@ def build_resources(p):
 def build_storage(p):
     info = account[p]
     if not info["isUnderConstruction"]:
-        if info["metal"] >= info["max_metal"] and ogame.can_build(p, Buildings["metal_storage"], 'supply'):
+        if info["metal"] >= info["metal_max"] and ogame.can_build(p, Buildings["metal_storage"], 'supply'):
             print("Building metal_storage %d" % (info["metal_storage"] + 1))
             ogame.build_building(p, Buildings["metal_storage"])
-        elif info["crystal"] >= info["max_crystal"] and ogame.can_build(p, Buildings["crystal_storage"], 'supply'):
+        elif info["crystal"] >= info["crystal_max"] and ogame.can_build(p, Buildings["crystal_storage"], 'supply'):
             print("Building crystal_storage %d" % (info["crystal_storage"] + 1))
             ogame.build_building(p, Buildings["crystal_storage"])
-        elif info["deuterium"] >= info["max_deuterium"] and ogame.can_build(p, Buildings["deuterium_tank"], 'supply'):
+        elif info["deuterium"] >= info["deuterium_max"] and ogame.can_build(p, Buildings["deuterium_tank"], 'supply'):
             print("Building deuterium_tank %d" % (info["deuterium_tank"] + 1))
             ogame.build_building(p, Buildings["deuterium_tank"])
 

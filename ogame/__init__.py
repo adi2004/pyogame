@@ -230,7 +230,7 @@ class OGame(object):
             raise NOT_LOGGED
         return obj
 
-    def fetch_resources(self, planet_id):
+    def html_fetch_resources(self, planet_id):
         url = self.get_url('fetchResources', {'cp': planet_id})
         res = self.session.get(url).content.decode('utf8')
         try:
@@ -241,7 +241,7 @@ class OGame(object):
 
     def get_resources(self, planet_id):
         """Returns the planet resources stats."""
-        resources = self.fetch_resources(planet_id)
+        resources = self.html_fetch_resources(planet_id)
         metal = resources['metal']['resources']['actual']
         metal_max = resources['metal']['resources']['max']
         crystal = resources['crystal']['resources']['actual']
@@ -1081,8 +1081,8 @@ class OGame(object):
             raise NOT_LOGGED
         return obj
 
-    def galaxy_infos(self, galaxy, system):
-        html = self.galaxy_content(galaxy, system)['galaxy']
+    def galaxy_infos_new(self, galaxy, system):
+        html = self.html_galaxy_content(galaxy, system)['galaxy']
         soup = BeautifulSoup(html, 'lxml')
         rows = soup.findAll('tr', {'class': 'row'})
         res = []

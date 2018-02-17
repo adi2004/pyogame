@@ -25,11 +25,11 @@ class construct:
     heavy_laser = 403
     gauss_cannon = 404
     ion_cannon = 405
-    plasma_tcurret = 406
+    plasma_turret = 406
     small_schield_dome = 407
     large_schield_dome = 408
     anti_ballistic_missiles = 502
-    interplanetary_missiles =  503
+    interplanetary_missiles = 503
 
     small_cargo = 202
     large_cargo = 203
@@ -157,6 +157,17 @@ Defense = {
     'LargeShieldDome': 408,
     'AntiBallisticMissiles': 502,
     'InterplanetaryMissiles': 503,
+
+    "rocket_launcher": 401,
+    "light_laser": 402,
+    "heavy_laser": 403,
+    "gauss_cannon": 404,
+    "ion_cannon": 405,
+    "plasma_turret": 406,
+    "small_shield_dome": 407,
+    "large_shield_dome": 408,
+    "anti_ballistic_missiles": 502,
+    "interplanetary_missiles": 503,
 
     # NL
     'Raketlanceerder': 401,

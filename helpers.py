@@ -5,8 +5,13 @@ from ogame.constants import construct as c
 import locale
 import time
 import random
+import json
 
-ogame = None
+print("Loading helpers.py...")
+
+if 'ogame' not in locals():
+    print("resetting ogame var")
+    ogame = None
 account = {}
 galaxy_infos = []
 last_id = '33667257'
@@ -29,14 +34,27 @@ def test_stuff():
 
 
 def read_planet(p):
+    global last_id
     info = {}
     info.update(ogame.get_planet_infos(p))
     info.update(ogame.get_resources(p))
     info.update(ogame.get_resources_buildings(p))
     info.update(ogame.get_overview(p))
-    account[p] = info
+    if p in account:
+        account[p].update(info)
+    else:
+        account[p] = info
     last_id = p
 
+def read_planet_defense(planet):
+    d = ogame.get_defense(planet)
+    account[planet]["defense"] = d
+
+def read_file(file_name):
+    f = open(file_name, "r")
+    f_str = f.read()
+    account.update(json.loads(f_str))
+    f.close()
 
 def print_planet(p):
     info = account[p]
@@ -80,8 +98,8 @@ def print_account():
     print("%s, rank %d, points %d, honour_points %d, planets %s/%s" %
           (gen["player_name"], gen["rank"], gen["points"], gen["honour_points"],
            gen["current_planets"], gen["max_planets"]))
-    #if len(account[last_id]['research']) > 0:
-    #    print("Researching %s" % account[last_id]['research'])
+    if len(account[last_id]['research']) > 0:
+       print("Researching %s" % account[last_id]['research'])
 
     gen.update(ogame.get_flying_fleets())
     print("Fleets %d / %d" % (gen["current_fleets"], gen["max_fleets"]))
@@ -108,19 +126,32 @@ def fix_energy(p):
     energy = info["energy"]
     if energy < 0:
         needed_satellites = 1 + -energy / 40
-        building_satellites = get_satellites_in_queue(info["shipyard"])
+        building_satellites = get_shipyard_queue_item(p, c.solar_satellite)
         nr_of_ss = needed_satellites - building_satellites
         if nr_of_ss >= 1:
             print("Building on %s %d satellites." % (p, nr_of_ss))
             ogame.build_ships(p, c.solar_satellite, int(nr_of_ss))
 
+def fix_defense(p):
+    current = account[p]["defense"]
+    target = account[p]["defenses_levels"]
+    for dkey, dcount in current.items():
+        if target[dkey] < dcount:
+            continue
 
-def get_satellites_in_queue(arr):
-    satellites = 0
-    for dictionary in arr:
-        if dictionary["name"] == "SolarSatellite":
-            satellites += dictionary["quantity"]
-    return satellites
+        dmissing = target[dkey] - dcount - get_shipyard_queue_item(p, Defense[dkey])
+
+        if dmissing > 0:
+            print("Building %s x%d" % (dkey, dmissing))
+            ogame.build_defense(p, Defense[dkey], dmissing)
+
+def get_shipyard_queue_item(p, id):
+    queue = account[p]["shipyard"]
+    item_count = 0
+    for dictionary in queue:
+        if dictionary["code"] == id:
+            item_count += dictionary["quantity"]
+    return item_count
 
 
 def build_resources(p):
@@ -200,9 +231,9 @@ def mine(planet, number_of_missions):
             ogame.send_fleet(planet, ships, speed, where, mission, resources)
             time.sleep(2)
 
-def get_missing_resources(planet, building):
+def get_missing_resources(planet, building, level_diff = 1):
     info = account[planet]
-    cost = ogame.calc_building_cost(building, info[building] + 1)
+    cost = ogame.calc_building_cost(building, info[building] + level_diff)
     missing = {}
     missing['metal'] = cost['metal'] - info['metal']
     if missing['metal'] < 0:
@@ -216,7 +247,7 @@ def get_missing_resources(planet, building):
 
     return missing
 
-def transport(source_planet, destination_planet, resources):
+def transport(source_planet, destination_planet, resources, ):
     larce_cargoes_needed = 1 + int((resources['metal'] + resources['crystal'] + resources['deuterium']) / 25000)
     ships = [(c.large_cargo, larce_cargoes_needed)]
     speed = Speed['100%']

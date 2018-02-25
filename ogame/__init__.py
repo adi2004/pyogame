@@ -12,7 +12,6 @@ import pickle
 import random
 import os
 import inspect
-import pickle
 
 from ogame import constants
 from ogame.errors import BAD_UNIVERSE_NAME, BAD_DEFENSE_ID, NOT_LOGGED, BAD_CREDENTIALS, CANT_PROCESS, BAD_BUILDING_ID, \
@@ -84,7 +83,7 @@ def retry_if_logged_out(method):
                 working = True
                 res = method(self, *args, **kwargs)
             except NOT_LOGGED:
-                time.sleep(time_to_sleep)
+                # time.sleep(time_to_sleep)
                 attempt += 1
                 time_to_sleep += 1
                 if attempt > 5:
@@ -134,7 +133,7 @@ def get_code(name):
 
 @for_all_methods(sandbox_decorator)
 class OGame(object):
-    def __init__(self, universe, username, password, domain='en.ogame.gameforge.com', auto_bootstrap=True, sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="."):
+    def __init__(self, universe, username, password, domain='en.ogame.gameforge.com', auto_bootstrap=True, sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="./ogame.cookie"):
         self.session = requests.session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:57.0) Gecko/20100101 Firefox/57.0'})
@@ -157,21 +156,23 @@ class OGame(object):
     def save_cookies(self, session, filename):
         if not os.path.isdir(os.path.dirname(filename)):
             return False
-        with open(filename, 'w') as f:
+        with open(filename, 'wb') as f:
             f.truncate()
+            print("save_cookies")
             pickle.dump(session.cookies._cookies, f)
 
     def load_cookies(self, session, filename):
         if not os.path.isfile(filename):
             return False
 
-        with open(filename) as f:
+        with open(filename, "rb") as f:
             try:
                 cookies = pickle.load(f)
             except ValueError:
-                # ValueError
                 cookies = None
                 f.truncate()
+            except:
+                return False
             if cookies:
                 jar = requests.cookies.RequestsCookieJar()
                 jar._cookies = cookies
@@ -189,7 +190,7 @@ class OGame(object):
                     'uni': self.server_url,
                     'login': self.username,
                     'pass': self.password}
-            time.sleep(random.uniform(1, 5))
+            # time.sleep(random.uniform(1, 5))
             res = self.session.post(self.get_url('login'), data=payload).content
             soup = BeautifulSoup(res, 'lxml')
             session_found = soup.find('meta', {'name': 'ogame-session'})
@@ -893,7 +894,7 @@ class OGame(object):
         else:
             timeout = random.randrange(100, 300)
             # print "Waiting " + str(timeout) + "ms"
-            time.sleep(timeout / 1000.0)
+            # time.sleep(timeout / 1000.0)
 
             if self.server_url == '':
                 self.server_url = self.get_universe_url(self.universe)

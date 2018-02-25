@@ -13,7 +13,7 @@ if 'ogame' not in locals():
     print("resetting ogame var")
     ogame = None
 account = {}
-galaxy_infos = []
+
 last_id = '33667257'
 gen = {}
 
@@ -59,7 +59,7 @@ def read_file(file_name):
 def print_planet(p):
     info = account[p]
     # first part prepare print
-    s_planet = "%-8s  " % info["planet_name"]
+    s_planet = "%-15s  " % info["planet_name"]
     s_coord = "[%d:%3d:%3d]: " % (info["coordinate"]["galaxy"], info["coordinate"]["system"], info["coordinate"]["position"])
     s_info = "%3d℃, %2df " % (info["temperature"]["max"], info["fields"]["total"] - info["fields"]["built"])
 
@@ -182,41 +182,48 @@ def build_storage(p):
             ogame.build_building(p, Buildings["deuterium_tank"])
 
 
-def send_expedition(planet):
+def send_expedition(planet, large_cargo_count = 200):
     """send expedition with 200 LC"""
-    ships = [(c.espionage_probe, 1), (c.large_cargo, 200)]
+    ships = [(c.espionage_probe, 1), (c.large_cargo, large_cargo_count)]
     speed = Speed['100%']
     galaxy = ogame.get_planet_infos(planet)["coordinate"]["galaxy"]
     system = ogame.get_planet_infos(planet)["coordinate"]["system"]
     where = {'galaxy': galaxy, 'system': system, 'position': 16}
     mission = Missions['Expedition']
     resources = {'metal': 0, 'crystal': 0, 'deuterium': 0}
-    print("Sending %d LC to [%d:%d:%d]" % (200, galaxy, system, 16))
-    ogame.send_fleet(planet, ships, speed, where, mission, resources)
-    time.sleep(2)
+    if "available_fleets" not in gen:
+        gen.update(ogame.get_flying_fleets())
+    if gen["available_fleets"] > 0:
+        print("Sending %d LC to [%d:%d:%d]" % (large_cargo_count, galaxy, system, 16))
+        ogame.send_fleet(planet, ships, speed, where, mission, resources)
+    else:
+        return False
 
-def scan_galaxy(galaxy_nr, rng):
-    for i in rng:
-        print("getting [%d:%3d] " % (galaxy_nr, i))
-        galaxy_info = ogame.galaxy_infos(galaxy_nr, i)
-        for position_info in galaxy_info:
-            if position_info["recyclers_needed"] < 5:
-                continue
-            g = galaxy_nr
-            p = position_info["coordinate"]["position"]
-            print("\t[%d:%d:%d] has %d Metal, %d Crystal, %d Recyclers" %
-                  ( g, i, p, position_info["metal_debris"], position_info["crystal_debris"],
-                    position_info["recyclers_needed"]))
 
-            mine_position = position_info["coordinate"]
-            mine_position["recyclers_needed"] = position_info["recyclers_needed"]
-            galaxy_infos.append(mine_position)
-        time.sleep(0.1)
+def scan_galaxy_infos(galaxy_range, systems_range):
+    gi = []
+    for g in galaxy_range:
+        for s in systems_range:
+            print("getting [%d:%3d] " % (g, s))
+            galaxy_info = ogame.galaxy_infos(g, s)
+            for position_info in galaxy_info:
+                if position_info["recyclers_needed"] < 5:
+                    continue
+                p = position_info["coordinate"]["position"]
+                print("\t[%d:%d:%d] has %d Metal, %d Crystal, %d Recyclers" %
+                      ( g, s, p, position_info["metal_debris"], position_info["crystal_debris"],
+                        position_info["recyclers_needed"]))
 
-def mine(planet, number_of_missions):
+                mine_position = position_info["coordinate"]
+                mine_position["recyclers_needed"] = position_info["recyclers_needed"]
+                gi.append(mine_position)
+            time.sleep(0.1)
+    return gi
+
+def mine(planet, galaxy_infos, max_missions):
     mine_info = sorted(galaxy_infos, key=lambda k: k['recyclers_needed'])
-    while number_of_missions > 0:
-        number_of_missions -= 1
+    while max_missions > 0:
+        max_missions -= 1
         if len(mine_info) > 0:
             recycle = mine_info.pop()
             ships = [(c.recycler, recycle["recyclers_needed"])]
@@ -227,13 +234,19 @@ def mine(planet, number_of_missions):
             where = {'galaxy': galaxy, 'system': system, 'position': position, 'type': 2}
             mission = Missions['RecycleDebrisField']
             resources = {'metal': 0, 'crystal': 0, 'deuterium': 0}
-            print("Sending %d recyclers to [%d:%d:%d]" % (recycle["recyclers_needed"], galaxy, system, position))
+            recyclers = 100 if recycle["recyclers_needed"] > 100 else recycle["recyclers_needed"]
+            print("Sending %d recyclers to [%d:%d:%d]" % (recyclers, galaxy, system, position))
             ogame.send_fleet(planet, ships, speed, where, mission, resources)
-            time.sleep(2)
 
-def get_missing_resources(planet, building, level_diff = 1):
+def get_resources(planet, building_str = "", level_diff = 1):
     info = account[planet]
-    cost = ogame.calc_building_cost(building, info[building] + level_diff)
+    cost = {}
+    if building_str == "":
+        cost['metal'] = 0
+        cost['crystal'] = 0
+        cost['deuterium'] = 0
+    else:
+        cost = ogame.calc_building_cost(building_str, info[building_str] + level_diff)
     missing = {}
     missing['metal'] = cost['metal'] - info['metal']
     if missing['metal'] < 0:
@@ -247,7 +260,11 @@ def get_missing_resources(planet, building, level_diff = 1):
 
     return missing
 
-def transport(source_planet, destination_planet, resources, ):
+def transport(source_planet, destination_planet, resources = {}):
+    if resources == {} and account[source_planet]["metal"] != {}:
+        resources["metal"] = account[source_planet]["metal"]
+        resources["crystal"] = account[source_planet]["crystal"]
+        resources["deuterium"] = account[source_planet]["deuterium"]
     larce_cargoes_needed = 1 + int((resources['metal'] + resources['crystal'] + resources['deuterium']) / 25000)
     ships = [(c.large_cargo, larce_cargoes_needed)]
     speed = Speed['100%']
@@ -264,4 +281,3 @@ def transport(source_planet, destination_planet, resources, ):
     }
     print("Sending %d cargoes to [%d:%d:%d]" % (larce_cargoes_needed, galaxy, system, position))
     ogame.send_fleet(source_planet, ships, speed, where, mission, resources)
-    #time.sleep(2)

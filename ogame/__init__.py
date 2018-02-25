@@ -158,7 +158,6 @@ class OGame(object):
             return False
         with open(filename, 'wb') as f:
             f.truncate()
-            print("save_cookies")
             pickle.dump(session.cookies._cookies, f)
 
     def load_cookies(self, session, filename):
@@ -385,14 +384,17 @@ class OGame(object):
             raise NOT_LOGGED
         soup = BeautifulSoup(res, 'lxml')
         res = {}
-        res['robotics_factory'] = get_nbr(soup, 'station14')
-        res['shipyard'] = get_nbr(soup, 'station21')
-        res['research_lab'] = get_nbr(soup, 'station31')
-        res['alliance_depot'] = get_nbr(soup, 'station34')
-        res['missile_silo'] = get_nbr(soup, 'station44')
-        res['nanite_factory'] = get_nbr(soup, 'station15')
-        res['terraformer'] = get_nbr(soup, 'station33')
-        res['space_dock'] = get_nbr(soup, 'station36')
+        try:
+            res['robotics_factory'] = get_nbr(soup, 'station14')
+            res['shipyard'] = get_nbr(soup, 'station21')
+            res['research_lab'] = get_nbr(soup, 'station31')
+            res['alliance_depot'] = get_nbr(soup, 'station34')
+            res['missile_silo'] = get_nbr(soup, 'station44')
+            res['nanite_factory'] = get_nbr(soup, 'station15')
+            res['terraformer'] = get_nbr(soup, 'station33')
+            res['space_dock'] = get_nbr(soup, 'station36')
+        except:
+            print("Err on get_facilities for " + planet_id)
         return res
 
     def get_research(self):

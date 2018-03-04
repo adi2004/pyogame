@@ -3,6 +3,7 @@ from pprint import pprint as pp
 import PrintColor
 import json
 from helpers import *
+from ogame import constants
 
 pc = PrintColor.PrintColor
 pp.red = pc.red
@@ -74,7 +75,9 @@ class Account:
     # Print general account informations (rank, name, research queue, messages)
     #
 
-    #TODO: implement print functions
+    def pp(self):
+        for planet in self.planets:
+            planet.pp()
 
     #
     # Persistance functions
@@ -122,8 +125,8 @@ class Account:
             self.do_actions(planet)
 
     def do_actions(self, planet):
-        planet.fetch_all()
-        planet.pp_full()
+        planet.fetch()
+        planet.pp()
         planet.fix_energy()
         planet.fix_defense()
 
@@ -132,9 +135,18 @@ class Account:
     #
 
     def planet_data(self, planet_id):
+        '''Given an ID returns the planet data source (aka data)'''
         for planet in self.planets:
             if planet.id() == planet_id:
                 return planet.data
+
+    def data_to_attr(self):
+        '''Given an existing data, gets the `planets` key and creates attributes on the `Account` class'''
+        self.planets = []
+        for k, v in self.data['planets'].items():
+            planet = Planet(self, v)
+            self.planets.append(planet)
+            self.__setattr__(k.lower(), planet)
 
     #
     # Main loop (do this every time)
@@ -179,13 +191,30 @@ class Planet:
     # Fetching functions (reads remote account)
     #
 
-    def fetch(self):
+    def fetch_infos(self):
         pc.yellow("Reading %s infos... " % self.name(), end = " ")
+        self.data.update(self.ogame.get_planet_infos(self.id()))
+        pc.green("Done!")
+
+    def fetch_resources(self):
+        pc.yellow("Reading %s resources... " % self.name(), end=" ")
         info = dict()
-        info.update(self.ogame.get_planet_infos(self.id()))
         info["resources"] = self.ogame.get_resources(self.id())
+        self.data.update(info)
+        pc.green("Done!")
+
+
+    def fetch_buildings(self):
+        pc.yellow("Reading %s buildings... " % self.name(), end=" ")
+        info = dict()
         info["buildings"] = self.ogame.get_resources_buildings(self.id())
-        info["queue"] = self.ogame.get_overview(self.id())
+        self.data.update(info)
+        pc.green("Done!")
+
+    def fetch_facilities(self):
+        pc.yellow("Reading %s facilities... " % self.name(), end=" ")
+        info = dict()
+        info["facilities"] = self.ogame.get_facilities(self.id())
         self.data.update(info)
         pc.green("Done!")
 
@@ -198,25 +227,27 @@ class Planet:
 
     def fetch_defense(self):
         pc.yellow("Reading %s defense... " % self.name(), end=" ")
-        d = self.ogame.get_defense(self.id())
-        self.data["defense"] = d
+        self.data["defense"] = self.ogame.get_defense(self.id())
         pc.green("Done!")
 
-    def fetch_facilities(self):
-        pc.yellow("Reading %s facilities... " % self.name(), end=" ")
+    def fetch_queue(self):
+        pc.yellow("Reading %s queue... " % self.name(), end = " ")
         info = dict()
-        info["facilities"] = self.ogame.get_facilities(self.id())
+        info["queue"] = self.ogame.get_overview(self.id())
         self.data.update(info)
         pc.green("Done!")
 
     def fetch_fleet(self):
         pass
 
-    def fetch_all(self):
-        self.fetch()
-        self.fetch_ships()
-        self.fetch_defense()
+    def fetch(self):
+        self.fetch_infos()
+        self.fetch_resources()
+        self.fetch_buildings()
         self.fetch_facilities()
+        self.fetch_ships()
+        self.fetch_queue()
+        self.fetch_defense()
         self.fetch_fleet()
 
     #
@@ -228,6 +259,13 @@ class Planet:
             pc.red("data not fetched.")
             return
         print("%-15s  " % self.data["planet_name"] + string)
+
+    def _pp_items(self, items):
+        print_string = ""
+        for key, value in items:
+            if value > 0:
+                print_string += "%s %d; " % (constants.get_constant(key).short, value)
+        self._pp(print_string)
 
     def pp_info(self):
         if "planet_name" not in self.data:
@@ -292,25 +330,26 @@ class Planet:
             self._pp("Shipyard queue is empty")
 
     def pp_buildings(self):
-        pp(self.data["buildings"])
+        self._pp_items(self.data["buildings"].items())
 
     def pp_facilities(self):
-        pp(self.data["facilities"])
+        self._pp_items(self.data["facilities"].items())
 
     def pp_ships(self):
-        pp(self.data["ships"])
+        self._pp_items(self.data["ships"].items())
 
     def pp_defense(self):
-        pp(self.data["defense"])
+        self._pp_items(self.data["defense"].items())
 
     def pp_fleet(self):
         pass
 
-    def pp_full(self):
+    def pp(self):
         self.pp_info()
         self.pp_resources()
         self.pp_buildings()
         self.pp_facilities()
+        self.pp_ships()
         self.pp_defense()
         self.pp_building_queue()
         self.pp_shipyard_queue()
@@ -341,6 +380,8 @@ class Planet:
         target = self.data["defense_fix"]
 
         for dkey, dcount in current.items():
+            if dkey not in target:
+                continue
             if target[dkey] < dcount:
                 continue
 
@@ -348,7 +389,7 @@ class Planet:
 
             if dmissing > 0:
                 print("Building %s x%d" % (dkey, dmissing))
-                ogame.build_defense(self.id(), Defense[dkey], dmissing)
+                self.ogame.build_defense(self.id(), Defense[dkey], dmissing)
 
     def _shipyard_queue(self, item_id):
         queue = self.data["queue"]["shipyard"]
@@ -399,3 +440,6 @@ class Planet:
         }
         print("Sending %d cargoes to [%d:%d:%d]" % (larce_cargoes_needed, galaxy, system, position))
         self.ogame.send_fleet(self.id(), ships, speed, where, mission, resources)
+
+    def reversed_transport(self, planet_id, resources={}):
+        planet_id.transport(self.id(), resources)

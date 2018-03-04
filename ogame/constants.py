@@ -1,5 +1,88 @@
 # coding: utf-8
 
+class Item:
+    class Keys:
+        name = ""
+        id = 0
+        short = ""
+        long = ""
+        def __init__(self, name, id, short, long):
+            self.name = name
+            self.id = id
+            self.short = short
+            self.long = long
+
+    # resources
+    metal_mine = Keys("metal_mine", 1, "mm", "MetalMine")
+    crystal_mine = Keys("crystal_mine", 2, "cm", "CrystalMine")
+    deuterium_synthesizer = Keys("deuterium_synthesizer", 3, "ds", "DeuteriumSynthesizer")
+    solar_plant = Keys("solar_plant", 4, "sp", "SolarPlant")
+    fusion_reactor = Keys("fusion_reactor", 12, "fr", "FusionReactor")
+    solar_satellite = Keys("solar_satellite", 212, "ss", "SolarSatellite")
+
+    metal_storage = Keys("metal_storage", 22, "ms", "MetalStorage")
+    crystal_storage = Keys("crystal_storage", 23, "cs", "CrystalStorage")
+    deuterium_tank = Keys("deuterium_tank", 24, "dt", "DeuteriumTank")
+
+    # facilities
+    alliance_depot = Keys("alliance_depot", 34, "ad", "AllianceDepot")
+    robotics_factory = Keys("robotics_factory", 14, "rf", "RoboticsFactory")
+    shipyard = Keys("shipyard", 21, "sy", "Shipyard")
+    research_lab = Keys("research_lab", 31, "rl", "ResearchLab")
+    missile_silo = Keys("missile_silo", 44, "mi", "MissileSilo")
+    nanite_factory = Keys("nanite_factory", 15, "nf", "NaniteFactory")
+    terraformer = Keys("terraformer", 33, "tf", "Terraformer")
+    space_dock = Keys("space_dock", 36, "sd", "SpaceDock")
+
+    # ships
+    small_cargo = Keys("small_cargo", 202, "sc", "SmallCargo")
+    large_cargo = Keys("large_cargo", 203, "ss", "LargeCargo")
+    light_fighter = Keys("light_fighter", 204, "lf", "LightFighter")
+    heavy_fighter = Keys("heavy_fighter", 205, "hf", "HeavyFighter")
+    cruiser = Keys("cruiser", 206, "cr", "Cruiser")
+    battleship = Keys("battleship", 207, "bs", "Battleship")
+    colony_ship = Keys("colony_ship", 208, "cs", "ColonyShip")
+    recycler = Keys("recycler", 209, "rc", "Recycler")
+    espionage_probe = Keys("espionage_probe", 210, "sp", "EspionageProbe")
+    bomber = Keys("bomber", 211, "bo", "Bomber")
+    destroyer = Keys("destroyer", 213, "dy", "Destroyer")
+    deathstar = Keys("deathstar", 214, "ds", "Deathstar")
+    battlecruiser = Keys("battlecruiser", 215, "bc", "Battlecruiser")
+
+    # defense
+    rocket_launcher = Keys("rocket_launcher", 401, "rl", "RocketLauncher")
+    light_laser = Keys("light_laser", 402, "ll", "LightLaser")
+    heavy_laser = Keys("heavy_laser", 403, "hl", "HeavyLaser")
+    gauss_cannon = Keys("gauss_cannon", 404, "gc", "GaussCannon")
+    ion_cannon = Keys("ion_cannon", 405, "ic", "IonCannon")
+    plasma_turret = Keys("plasma_turret", 406, "pt", "PlasmaTurret")
+    small_shield_dome = Keys("small_shield_dome", 407, "ssd", "SmallShieldDome")
+    large_shield_dome = Keys("large_shield_dome", 408, "lsd", "LargeShieldDome")
+    anti_ballistic_missiles = Keys("anti_ballistic_missiles", 502, "abm", "AntiBallisticMissiles")
+    interplanetary_missiles = Keys("interplanetary_missiles", 503, "ipm", "InterplanetaryMissiles")
+
+def get_constant(alias):
+    # items_str = list(filter(lambda x: not x.startswith("_"), dir(Item)))
+    for item_str in dir(Item):
+        item = getattr(Item, item_str)
+        if type(item) == Item.Keys and \
+                (item.name == alias or item.id == alias or item.short == alias or item.long == alias):
+            return item
+    else:
+        print("Alias `%s` not found!" % alias)
+
+Short = {
+    'metal_mine': "mm",
+    'crystal_mine': "cm",
+    'deuterium_synthesizer': "ds",
+    'solar_plant': "sp",
+    'fusion_reactor': "fr",
+
+    'metal_storage': "ms",
+    'crystal_storage': "cs",
+    'deuterium_tank': "dt",
+}
+
 class construct:
     metal_mine = 1
     crystal_mine = 2
@@ -15,10 +98,10 @@ class construct:
     robotics_factory = 14
     shipyard = 21
     research_lab = 31
-    missile_sil0 = 44
+    missile_silo = 44
     nanite_factory = 15
     terraformer = 33
-    space_doc = 3
+    space_doc = 36
 
     rocket_launcher = 401
     light_laser = 402
@@ -26,8 +109,8 @@ class construct:
     gauss_cannon = 404
     ion_cannon = 405
     plasma_turret = 406
-    small_schield_dome = 407
-    large_schield_dome = 408
+    small_shield_dome = 407
+    large_shield_dome = 408
     anti_ballistic_missiles = 502
     interplanetary_missiles = 503
 
@@ -62,6 +145,7 @@ class construct:
     weapons_technology = 109
     shielding_technology = 110
     armour_technology = 111
+
 
 Buildings = {
     'MetalMine': 1,
@@ -219,7 +303,7 @@ Ships = {
     'Kruiser': 206,
     'Slagschip': 207,
     'Kolonisatiesschip': 208,
-    'Recycler': 209,
+    #'Recycler': 209,
     'Spionagesonde': 210,
     'Bommenwerper': 211,
     'Zonne-energiesatelliet': 212,

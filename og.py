@@ -4,6 +4,7 @@ import PrintColor
 import json
 from helpers import *
 from ogame import constants
+import random
 
 pc = PrintColor.PrintColor
 pp.red = pc.red
@@ -20,6 +21,9 @@ class Account:
     # array of planets and moons
     planets = []
 
+    # persistance file
+    file = "ogame.json"
+
     def __init__(self):
         print("Account.__init__")
 
@@ -33,6 +37,8 @@ class Account:
         else:
             if self.ogame.is_logged():
                 pc.green("Success!")
+                for p in self.planets:
+                    p.ogame = self.ogame
 
     #
     # Fetching functions (they display only status messages, not the data fetched)
@@ -83,8 +89,12 @@ class Account:
     # Persistance functions
     #
 
-    def load(self, file_name = "ogame.json"):
+    def load(self, file_name = None):
         """Reads the data from a json file"""
+        if file_name is not None and self.file != file_name:
+            print("Setting file to %s" % file_name)
+            self.file = file_name
+        file_name = self.file
         pc.bold("Loading %s" % file_name, end = " ")
         try:
             f = open(file_name, "r")
@@ -95,9 +105,13 @@ class Account:
         except Exception as e:
             pp.red("JSON format error: " + str(e))
         else:
+            self.init_planets()
             pc.green("Done.")
 
-    def save(self, file_name = "ogame.json"):
+    def save(self, file_name = None):
+        if file_name is not None and self.file != file_name:
+            pp("Setting file to %s", file_name)
+        file_name = self.file
         pc.bold("Saving to %s" % file_name, end = " ")
 
         # updated data
@@ -120,28 +134,48 @@ class Account:
     # Actions for all the planets
     #
 
-    def do(self):
+    def do_on_all_planets(self, stuff = None):
+        if stuff is None:
+            stuff = Account.do_actions
         for planet in self.planets:
-            self.do_actions(planet)
+            stuff(planet)
 
-    def do_actions(self, planet):
+    @classmethod
+    def do_actions(cls, planet):
         planet.fetch()
         planet.pp()
+        planet.build_mines()
+        planet.build_storage()
         planet.fix_energy()
         planet.fix_defense()
+        planet.fetch_queue()
+
+    @classmethod
+    def do_forever(cls, planet):
+        # build mines
+        planet.fetch_resources()
+        planet.pp_resources()
+        planet.fix_energy()
+
+        # build defenses
+        planet.fetch_defense()
+        planet.fix_defense()
+        planet.fetch_queue()
 
     #
-    # TODO: name this
+    # Data manipulation
     #
 
     def planet_data(self, planet_id):
-        '''Given an ID returns the planet data source (aka data)'''
+        """Given an ID returns the planet data source (aka data)"""
         for planet in self.planets:
             if planet.id() == planet_id:
                 return planet.data
 
-    def data_to_attr(self):
-        '''Given an existing data, gets the `planets` key and creates attributes on the `Account` class'''
+    def init_planets(self):
+        """Given an existing data, gets the `planets` key and creates attributes on the `Account` class"""
+        if 'planets' not in self.data:
+            pc.red("Unable to initialize `planets`. No `planets` key found in `self.data`")
         self.planets = []
         for k, v in self.data['planets'].items():
             planet = Planet(self, v)
@@ -152,17 +186,22 @@ class Account:
     # Main loop (do this every time)
     #
 
-    minimum_wait_time = 10
-    wait_time = 60
+    minimum_wait_time = 0
+    wait_time = 0
 
     def loop(self):
-        while True:
-            self.do()
+        # initialize everything
+        self.do_on_all_planets()
 
+        while True:
             # feeling sleepy
             time_to_sleep = random.uniform(self.minimum_wait_time, self.minimum_wait_time + self.wait_time)
             pc.bold("Sleeping %.2f minutes\nZZzzzZz.. zz... zzzZz...\n" % time_to_sleep)
             time.sleep(time_to_sleep * 60)
+
+            self.do_on_all_planets(self.do_forever)
+            for p in self.planets:
+                p.movement_expedition()
 
 class Planet:
     data = {}
@@ -369,7 +408,7 @@ class Planet:
             nr_of_ss = needed_satellites - building_satellites
             if nr_of_ss >= 1:
                 print("Building on %s %d satellites." % (p, nr_of_ss))
-                ogame.build_ships(p, c.solar_satellite, int(nr_of_ss))
+                self.ogame.build_ships(p, c.solar_satellite, int(nr_of_ss))
 
     def fix_defense(self):
         if "defense_fix" not in self.data:
@@ -387,7 +426,7 @@ class Planet:
 
             dmissing = target[dkey] - dcount - self._shipyard_queue(Defense[dkey])
 
-            if dmissing > 0:
+            if dmissing > 0 and self.ogame.can_build_defenses(self.id(), dkey):
                 print("Building %s x%d" % (dkey, dmissing))
                 self.ogame.build_defense(self.id(), Defense[dkey], dmissing)
 
@@ -400,6 +439,7 @@ class Planet:
         return item_count
 
     def get_resources(self, building_str="", level_diff=1):
+        """Calculates the resources needed to build new building higher with level_diff then the current level"""
         res = self.data["resources"]
 
         cost = {}
@@ -418,9 +458,88 @@ class Planet:
 
         return missing
 
-    def transport(self, planet_id, resources={}):
+    def scan_galaxy_infos(self, galaxy_range, systems_range, min_recyclers = 5):
+        gi = []
+        for g in galaxy_range:
+            print("Scanning galaxy %d:" % g)
+            for s in systems_range:
+                print("%d " % s, end="", flush=True)
+                galaxy_info = self.ogame.galaxy_infos(g, s)
+                for position_info in galaxy_info:
+                    if position_info["recyclers_needed"] < min_recyclers:
+                        continue
+                    p = position_info["coordinate"]["position"]
+                    print("[%d:%d:%d] has %d Metal, %d Crystal, %d Recyclers" %
+                          (g, s, p, position_info["metal_debris"], position_info["crystal_debris"],
+                           position_info["recyclers_needed"]))
+
+                    mine_position = position_info["coordinate"]
+                    mine_position["recyclers_needed"] = position_info["recyclers_needed"]
+                    gi.append(mine_position)
+                # time.sleep(0.1)
+            print("Done!")
+        return gi
+
+    def mine(self, galaxy_infos, max_missions = 5, min_recyclers = 5, max_recyclers = 100):
+        mine_info = sorted(galaxy_infos, key=lambda k: k['recyclers_needed'])
+        while max_missions > 0:
+            max_missions -= 1
+            if len(mine_info) > 0:
+                recycle = mine_info.pop()
+                recyclers_needed = int(recycle["recyclers_needed"])
+                if recyclers_needed < min_recyclers or recyclers_needed > max_recyclers:
+                    continue
+                ships = [(c.recycler, recycle["recyclers_needed"])]
+                speed = Speed['100%']
+                galaxy = recycle["galaxy"]
+                system = recycle["system"]
+                position = recycle["position"]
+                where = {'galaxy': galaxy, 'system': system, 'position': position, 'type': 2}
+                mission = Missions['RecycleDebrisField']
+                resources = {'metal': 0, 'crystal': 0, 'deuterium': 0}
+                recyclers = 100 if recycle["recyclers_needed"] > 100 else recycle["recyclers_needed"]
+                print("Sending %d recyclers to [%d:%d:%d]" % (recyclers, galaxy, system, position))
+                self.ogame.send_fleet(self.id(), ships, speed, where, mission, resources)
+
+    #
+    # Build actions
+    #
+
+    def build_mines(self):
+        info = self.data
+        if not info["isUnderConstruction"]:
+            mines = dict()
+            mines["metal_mine"] = info["buildings"]["metal_mine"]
+            mines["crystal_mine"] = info["buildings"]["crystal_mine"]
+            mines["deuterium_synthesizer"] = info["buildings"]["deuterium_synthesizer"]
+            for m in sorted(mines, key=mines.get):
+                if self.ogame.can_build(self.id(), Buildings[m], 'supply'):
+                    print("Building %s %d" % (m, mines[m] + 1))
+                    self.ogame.build_building(self.id(), Buildings[m])
+                    return
+
+    def build_storage(self):
+        info = self.data["resources"]
+        blds = self.data["buildings"]
+        if not self.data["isUnderConstruction"]:
+            if info["metal"] >= info["metal_max"] and self.ogame.can_build(self.id(), Buildings["metal_storage"], 'supply'):
+                print("Building metal_storage %d" % (blds["metal_storage"] + 1))
+                self.ogame.build_building(self.id(), Buildings["metal_storage"])
+            elif info["crystal"] >= info["crystal_max"] and self.ogame.can_build(self.id(), Buildings["crystal_storage"], 'supply'):
+                print("Building crystal_storage %d" % (blds["crystal_storage"] + 1))
+                self.ogame.build_building(self.id(), Buildings["crystal_storage"])
+            elif info["deuterium"] >= info["deuterium_max"] and self.ogame.can_build(self.id(), Buildings["deuterium_tank"], 'supply'):
+                print("Building deuterium_tank %d" % (blds["deuterium_tank"] + 1))
+                self.ogame.build_building(self.id(), Buildings["deuterium_tank"])
+
+    #
+    # Fleet actions
+    #
+
+    def movement_transport(self, planet_id, resources=None):
         res = self.data["resources"]
-        if resources == {} and res["metal"] != {}:
+        if resources is None and res["metal"] != {}:
+            resources = dict()
             resources["metal"] = res["metal"]
             resources["crystal"] = res["crystal"]
             resources["deuterium"] = res["deuterium"]
@@ -441,5 +560,24 @@ class Planet:
         print("Sending %d cargoes to [%d:%d:%d]" % (larce_cargoes_needed, galaxy, system, position))
         self.ogame.send_fleet(self.id(), ships, speed, where, mission, resources)
 
-    def reversed_transport(self, planet_id, resources={}):
-        planet_id.transport(self.id(), resources)
+    def movement_reverse_transport(self, planet, resources=None):
+        planet.movement_transport(self.id(), resources)
+
+    def movement_expedition(self, large_cargo_count=200):
+        """send expedition with 200 LC"""
+        ships = [(c.espionage_probe, 1), (c.large_cargo, large_cargo_count)]
+        speed = Speed['100%']
+        galaxy = self.ogame.get_planet_infos(self.id())["coordinate"]["galaxy"]
+        system = self.ogame.get_planet_infos(self.id())["coordinate"]["system"]
+        where = {'galaxy': galaxy, 'system': system, 'position': 16}
+        mission = Missions['Expedition']
+        resources = {'metal': 0, 'crystal': 0, 'deuterium': 0}
+
+        gen = dict()
+        if "available_fleets" not in gen:
+            gen.update(self.ogame.get_flying_fleets())
+        if gen["available_fleets"] > 0:
+            print("Sending %d LC to [%d:%d:%d]" % (large_cargo_count, galaxy, system, 16))
+            self.ogame.send_fleet(self.id(), ships, speed, where, mission, resources)
+        else:
+            return False

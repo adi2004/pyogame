@@ -309,7 +309,7 @@ class OGame(object):
         tmp = re.search(r'textContent\[7\]="([^"]+)"', str(html)).group(1)
         soup = BeautifulSoup(tmp, 'lxml')
         tmp = soup.text
-        infos = re.search(r'([\d\\.]+) \(\S+ ([\d\.]+) \S+ ([\d\.]+)\)', tmp)
+        infos = re.search(r'([\d\\.]+) \(\S+ ([\d.]+) \S+ ([\d.]+)\)', tmp)
         res['points'] = parse_int(infos.group(1))
         res['rank'] = parse_int(infos.group(2))
         res['total'] = parse_int(infos.group(3))
@@ -326,7 +326,7 @@ class OGame(object):
         if not self.is_logged(res):
             raise NOT_LOGGED
         soup = BeautifulSoup(res, 'lxml')
-        res = {}
+        res = dict()
         res['metal_mine'] = get_nbr(soup, 'supply1')
         res['crystal_mine'] = get_nbr(soup, 'supply2')
         res['deuterium_synthesizer'] = get_nbr(soup, 'supply3')
@@ -518,7 +518,7 @@ class OGame(object):
         for item in items:
             resultDict = {}
             if item == None:
-                continue;
+                continue
 
             itemCount = item.span.string if item.span != None else item.div.string
             itemID = item.a.get('ref')
@@ -684,7 +684,8 @@ class OGame(object):
         if not self.is_logged(res):
             raise NOT_LOGGED
 
-    def get_flight_duration(self, Geschwindigkeitsfaktor, Entfernung, GeschwindigkeitDesLangsamstenSchiffs, UniFleetSpeed=1):
+    @classmethod
+    def calc_flight_duration(cls, Geschwindigkeitsfaktor, Entfernung, GeschwindigkeitDesLangsamstenSchiffs, UniFleetSpeed=1):
         #Flugzeit in Sekunden:
         #= (3.500 / Geschwindigkeitsfaktor) * (Entfernung * 10 / GeschwindigkeitDesLangsamstenSchiffs) ^ 0,5 + 10
         duration = ((3500 / Geschwindigkeitsfaktor) * (Entfernung * 10 /
@@ -692,7 +693,8 @@ class OGame(object):
 
         return duration
 
-    def get_flight_distance(self, origin_galaxy, origin_system, origin_position, target_galaxy, target_system, target_position):
+    @classmethod
+    def calc_flight_distance(cls, origin_galaxy, origin_system, origin_position, target_galaxy, target_system, target_position):
         if origin_galaxy != target_galaxy:
             return math.fabs(origin_galaxy - target_galaxy) * 20000
         elif origin_system != target_system:
@@ -702,14 +704,14 @@ class OGame(object):
         else:
             return 5
 
-    def get_fleet_slots(self):
-        res = self.session.get(self.get_url('fleet1')).content
-        soup = BeautifulSoup(res, 'lxml')
-        fleetStatus = soup.find('div', {'class': 'fleetStatus'}).text.strip(
-        ).replace(" ", "").replace("\n", "")
-        infos = re.search(
-            r'(?:Flotten:)(\d+)\/(\d+)(?:Expeditionen:)(\d+)\/(\d+)', fleetStatus)
-        return [int(infos.group(1)), int(infos.group(2))]
+    # def get_fleet_slots(self):
+    #     res = self.session.get(self.get_url('fleet1')).content
+    #     soup = BeautifulSoup(res, 'lxml')
+    #     fleetStatus = soup.find('div', {'class': 'fleetStatus'}).text.strip(
+    #     ).replace(" ", "").replace("\n", "")
+    #     infos = re.search(
+    #         r'(?:Fleets:)(\d+)\/(\d+)(?:Expeditions:)(\d+)\/(\d+)', fleetStatus)
+    #     return [int(infos.group(1)), int(infos.group(2))]
 
     def get_fleets(self):
         headers = {'X-Requested-With': 'XMLHttpRequest'}
@@ -770,15 +772,15 @@ class OGame(object):
             missions.append(mission)
         return missions
 
-    def get_fleet_ids(self):
-        """Return the reversable fleet ids."""
-        res = self.session.get(self.get_url('movement')).content
-        if not self.is_logged(res):
-            raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
-        spans = soup.findAll('span', {'class': 'reversal'})
-        fleet_ids = [span.get('ref') for span in spans]
-        return fleet_ids
+    # def get_fleet_ids(self):
+    #     """Return the reversable fleet ids."""
+    #     res = self.session.get(self.get_url('movement')).content
+    #     if not self.is_logged(res):
+    #         raise NOT_LOGGED
+    #     soup = BeautifulSoup(res, 'lxml')
+    #     spans = soup.findAll('span', {'class': 'reversal'})
+    #     fleet_ids = [span.get('ref') for span in spans]
+    #     return fleet_ids
 
     def get_attacks(self, checkSpyAlso=False):
         headers = {'X-Requested-With': 'XMLHttpRequest'}
@@ -793,7 +795,6 @@ class OGame(object):
         events += eventsDup
         # unsupported operand type(s) for +=: 'filter' and 'ResultSet'
 
-
         attacks = []
         for event in events:
             mission_type = int(event['data-mission-type'])
@@ -807,7 +808,7 @@ class OGame(object):
                 elif checkSpyAlso is False:
                     continue
                 else:
-                    None
+                    pass
 
             attack = {}
             attack.update({'mission_type': mission_type})
@@ -827,7 +828,7 @@ class OGame(object):
             elif mission_type == 6:
                 total_fleet = event.find('td', {'class': 'icon_movement'})
                 if total_fleet is None:
-                    None
+                    pass
                 else:
                     total_fleet = total_fleet.find('span')['title']
                     soup_fleet = BeautifulSoup(total_fleet, 'lxml')
@@ -867,7 +868,7 @@ class OGame(object):
             # attack.update({'detailsFleet': int(event.find('td', {'class': 'detailsFleet'}).text.replace(".","").replace("Mn","").strip())})
             try:
                 attack.update({'detailsFleet': int(event.find('td', {'class': 'detailsFleet'}).text.strip())})
-            except ValueError as ve:
+            except ValueError as _:
                 attack.update({'detailsFleet': "(?)"})
 
             if mission_type == 1:
@@ -892,7 +893,7 @@ class OGame(object):
         if page == 'login':
             return 'https://{}/main/login'.format(self.domain)
         else:
-            timeout = random.randrange(100, 300)
+            # timeout = random.randrange(100, 300)
             # print "Waiting " + str(timeout) + "ms"
             # time.sleep(timeout / 1000.0)
 
@@ -1055,20 +1056,21 @@ class OGame(object):
         url = self.get_url('ajaxChat')
         self.session.post(url, data=payload, headers=headers)
 
-    def getSolarPlantProduction(level=1, Ingenieur = False):
+    @classmethod
+    def getSolarPlantProduction(cls, level=1, Ingenieur = False):
         IngenieurBonus = 1.0
         if Ingenieur:
             IngenieurBonus = 1.1
         return round( math.fabs(20 * level * 1.1 ** level ) * IngenieurBonus)
 
-    def get_solarSatelliteProduction(self, planet_max_temp, satellite_count = 1, Ingenieur = False):
+    @classmethod
+    def get_solarSatelliteProduction(cls, planet_max_temp, satellite_count = 1, Ingenieur = False):
         IngenieurBonus = 1.0
 
         if Ingenieur:
             IngenieurBonus = 1.1
 
         return round(math.fabs((planet_max_temp + 140) / 6) * satellite_count * IngenieurBonus)
-
 
     def html_galaxy_content(self, galaxy, system):
         headers = {'X-Requested-With': 'XMLHttpRequest',
@@ -1120,15 +1122,13 @@ class OGame(object):
         res = self.session.get(url).content.decode('utf8')
         return res
 
-    def delete_spy_reports(self, message_id):
+    def delete_spy_report(self, message_id):
         headers = {'X-Requested-With': 'XMLHttpRequest'}
         payload = {'messageId': message_id, 'action': 103, 'ajax': 1}
         url = self.get_url('messages')
         res = self.session.post(url, data=payload, headers=headers).content.decode('utf8')
 
         return res
-
-
 
     def get_flying_fleets(self):
         url = self.get_url('movement')
@@ -1307,7 +1307,8 @@ class OGame(object):
         delete_action = self.session.post(self.get_url('planetGiveup'), headers=headers, data=delete_payload).content
 
 
-    def calc_consomation(self, page_string, building_string, lvl):
+    @classmethod
+    def calc_consomation(cls, page_string, building_string, lvl):
         """ Retourne la consommation du batiment du level lvl + 1 """
         energieLvl = constants.Formules[page_string][building_string]['consommation'][0] * lvl * (
                 constants.Formules[page_string][building_string]['consommation'][1] ** lvl)
@@ -1315,7 +1316,8 @@ class OGame(object):
                 constants.Formules[page_string][building_string]['consommation'][1] ** (lvl + 1))
         return math.floor(energieNextLvl - energieLvl)
 
-    def calc_building_cost(self, building, lvl):
+    @classmethod
+    def calc_building_cost(cls, building, lvl):
         """ Retourne le cout d'un building_string lvl + 1 """
         cost = {}
         cost['metal'] = int(math.floor(constants.Formules[building]['cout']['metal'][0] *
@@ -1326,7 +1328,8 @@ class OGame(object):
                                            constants.Formules[building]['cout']['deuterium'][1] ** (lvl - 1)))
         return cost
 
-    def calc_building_time(self, cost, robotics, nano, speed):
+    @classmethod
+    def calc_building_time(cls, cost, robotics, nano, speed):
         costSum = cost['metal'] + cost['crystal']
         buildTime = (costSum) / (2500 * (1 + robotics
                                          * (2 ** nano) * speed))
@@ -1343,7 +1346,8 @@ class OGame(object):
 
         return production
 
-    def calc_storage_size(self, lvl):
+    @classmethod
+    def calc_storage_size(cls, lvl):
         capacity = -1
         capacity = 5000 * int(math.floor(2.5 * (math.e ** (lvl * 20 / 33))))
         return capacity
@@ -1397,9 +1401,9 @@ class OGame(object):
                             player_rank = parse_int(rank.find('a').text)
                     if player_id_raw.startswith('debris'):
                         txt = tooltips[i].text
-                        metal_debris = int(re.search(r'Metal: ([\d\.]+)', txt).groups()[0].replace(".", ""))
-                        crystal_debris = int(re.search(r'Crystal: ([\d\.]+)', txt).groups()[0].replace(".", ""))
-                        recyclers_needed = int(re.search(r'Recyclers needed: ([\d\.]+)', txt).groups()[0].replace(".", ""))
+                        metal_debris = int(re.search(r'Metal: ([\d.]+)', txt).groups()[0].replace(".", ""))
+                        crystal_debris = int(re.search(r'Crystal: ([\d.]+)', txt).groups()[0].replace(".", ""))
+                        recyclers_needed = int(re.search(r'Recyclers needed: ([\d.]+)', txt).groups()[0].replace(".", ""))
                 planet_infos['player'] = {}
                 planet_infos['player']['id'] = player_id
                 planet_infos['player']['name'] = player_name
@@ -1484,29 +1488,36 @@ class OGame(object):
         else:
             return False
 
-    def metal_mine_production(self, level, universe_speed=1):
+    @classmethod
+    def metal_mine_production(cls, level, universe_speed=1):
         return int(math.floor(30 * level * 1.1 ** level) * universe_speed)
 
-    def crystal_mine_production(self, level, universe_speed=1):
+    @classmethod
+    def crystal_mine_production(cls, level, universe_speed=1):
         return int(math.floor(20 * level * 1.1 ** level) * universe_speed)
 
-    def deuterium_synthesizer_production(self, level, max_temperature, universe_speed=1):
+    @classmethod
+    def deuterium_synthesizer_production(cls, level, max_temperature, universe_speed=1):
         return int(math.floor(10 * level * 1.1 ** level) * (1.44 - 0.004 * max_temperature) * universe_speed)
 
-    def SolarPlantProduction(self, level):
+    @classmethod
+    def SolarPlantProduction(cls, level):
         return int(math.floor(20 * level * 1.1 ** level))
 
-    def FusionReactorProduction(self, research_energietechnik, level, engineer=False):
+    @classmethod
+    def FusionReactorProduction(cls, research_energietechnik, level, engineer=False):
         if engineer is True:
             return int(round(math.floor(30 * level * (1.05 + research_energietechnik * 0.01) ** level) * 1.1))
         return int(round(math.floor(30 * level * (1.05 + research_energietechnik * 0.01) ** level) * 1.0))
 
-    def SolarSatelliteProduction(self, max_temperature, amount, engineer=False):
+    @classmethod
+    def SolarSatelliteProduction(cls, max_temperature, amount, engineer=False):
         if engineer is True:
             return int(math.floor((max_temperature + 140.0) / 6.0) * amount * 1.1)
         return int(math.floor((max_temperature + 140) / 6) * amount)
 
-    def get_research_cost(self, research_id, targetLevel, currentLevel=-1):
+    @classmethod
+    def calc_research_cost(cls, research_id, targetLevel, currentLevel=-1):
         targetKosten = [0.0, 0.0, 0.0]
 
         metallkosten = 0.0
@@ -1629,60 +1640,70 @@ class OGame(object):
 
         return targetKosten
 
-    def rocketsilo_cost(self, level):
+    @classmethod
+    def rocketsilo_cost(cls, level):
         metal = int(10000 * 2 ** level)
         crystal = int(10000 * 2 ** level)
         deuterium = int(500 * 2 ** level)
-        return (metal, crystal, deuterium)
+        return metal, crystal, deuterium
 
-    def metal_mine_cost(self, level):
+    @classmethod
+    def metal_mine_cost(cls, level):
         metal = int(60 * 1.5 ** (level - 1))
         crystal = int(15 * 1.5 ** (level - 1))
         deuterium = int(0)
-        return (metal, crystal, deuterium)
+        return metal, crystal, deuterium
 
-    def crystal_mine_cost(self, level):
+    @classmethod
+    def crystal_mine_cost(cls, level):
         metal = int(48 * 1.6 ** (level - 1))
         crystal = int(24 * 1.6 ** (level - 1))
         deuterium = int(0)
-        return (metal, crystal, deuterium)
+        return metal, crystal, deuterium
 
-    def deuterium_synthesizer_cost(self, level):
+    @classmethod
+    def deuterium_synthesizer_cost(cls, level):
         metal = int(225 * 1.5 ** (level - 1))
         crystal = int(75 * 1.5 ** (level - 1))
         deuterium = int(0)
-        return (metal, crystal, deuterium)
+        return metal, crystal, deuterium
 
-    def solar_plant_cost(self, level, existinglevel=0):
+    @classmethod
+    def solar_plant_cost(cls, level, existinglevel=0):
         metal = int(150 * ((1.5 ** level) - (1.5 ** existinglevel)))
         crystal = int(60 * ((1.5 ** level) - (1.5 ** existinglevel)))
         deuterium = int(0)
-        return (metal, crystal, deuterium)
+        return metal, crystal, deuterium
 
-    def fusion_reactor_cost(self, level, existinglevel=0):
+    @classmethod
+    def fusion_reactor_cost(cls, level, existinglevel=0):
         metal = int(1125 * ((1.8 ** level) - (1.8 ** existinglevel)))
         crystal = int(450 * ((1.8 ** level) - (1.8 ** existinglevel)))
         deuterium = int(225 * ((1.8 ** level) - (1.8 ** existinglevel)))
-        return (metal, crystal, deuterium)
+        return metal, crystal, deuterium
 
-    def building_production_time(metal, crystal, level_robotics_factory, level_nanite_factory, level, universe_speed=1):
+    @classmethod
+    def building_production_time(cls, metal, crystal, level_robotics_factory, level_nanite_factory, level, universe_speed=1):
         res = (metal + crystal) / (2500 * max(4 - level / 2, 1) * (1 +
                                                                    level_robotics_factory) * universe_speed * 2 ** level_nanite_factory) * 3600
         seconds = int(round(res))
         return seconds
 
-    def building_production_time2(metal, crystal, level_robotics_factory, level_nanite_factory, level, universe_speed=1):
+    @classmethod
+    def building_production_time2(cls, metal, crystal, level_robotics_factory, level_nanite_factory, level, universe_speed=1):
         """Nanite Factories, Lunar Bases, Sensor Phalanxes, and Jumpgates do not get the MAX() time reduction, so their formula is just"""
         res = (metal + crystal) / (2500 * (1 + level_robotics_factory)
                                    * universe_speed * 2 ** level_nanite_factory) * 3600
         seconds = int(round(res))
         return seconds
 
-    def research_time(metal, crystal, research_lab_level):
+    @classmethod
+    def research_time(cls, metal, crystal, research_lab_level):
         res = (metal + crystal) / (1000 * (1 + research_lab_level))
         seconds = int(round(res))
         return seconds
 
-    def flightspeed_combustiondrive(self, shipbasespeed=0.0, level_combustion=1.0):
+    @classmethod
+    def flightspeed_combustiondrive(cls, shipbasespeed=0.0, level_combustion=1.0):
         # Grundgeschwindigkeit * (1 + (0, 1 * Stufe Verbrennungstriebwerk))
         return shipbasespeed * (1.0 + (0.1 * level_combustion))

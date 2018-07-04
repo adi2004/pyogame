@@ -131,38 +131,6 @@ class Account:
             pc.green("Done.")
 
     #
-    # Actions for all the planets
-    #
-
-    def do_on_all_planets(self, stuff = None):
-        if stuff is None:
-            stuff = Account.do_actions
-        for planet in self.planets:
-            stuff(planet)
-
-    @classmethod
-    def do_actions(cls, planet):
-        planet.fetch()
-        planet.pp()
-        planet.build_mines()
-        planet.build_storage()
-        planet.fix_energy()
-        planet.fix_defense()
-        planet.fetch_queue()
-
-    @classmethod
-    def do_forever(cls, planet):
-        # build mines
-        planet.fetch_resources()
-        planet.pp_resources()
-        planet.fix_energy()
-
-        # build defenses
-        planet.fetch_defense()
-        planet.fix_defense()
-        planet.fetch_queue()
-
-    #
     # Data manipulation
     #
 
@@ -181,27 +149,6 @@ class Account:
             planet = Planet(self, v)
             self.planets.append(planet)
             self.__setattr__(k.lower(), planet)
-
-    #
-    # Main loop (do this every time)
-    #
-
-    minimum_wait_time = 0
-    wait_time = 0
-
-    def loop(self):
-        # initialize everything
-        self.do_on_all_planets()
-
-        while True:
-            # feeling sleepy
-            time_to_sleep = random.uniform(self.minimum_wait_time, self.minimum_wait_time + self.wait_time)
-            pc.bold("Sleeping %.2f minutes\nZZzzzZz.. zz... zzzZz...\n" % time_to_sleep)
-            time.sleep(time_to_sleep * 60)
-
-            self.do_on_all_planets(self.do_forever)
-            for p in self.planets:
-                p.movement_expedition()
 
 class Planet:
     data = {}
@@ -449,7 +396,7 @@ class Planet:
             cost['deuterium'] = 0
         else:
             building_lvl = self.data["buildings"][building_str] + level_diff
-            cost = self.ogame.calc_building_cost(building_str, building_lvl)
+            cost = OGame.calc_building_cost(building_str, building_lvl)
 
         missing = dict()
         missing['metal'] = max(0, cost['metal'] - res['metal'])
@@ -536,7 +483,7 @@ class Planet:
     # Fleet actions
     #
 
-    def movement_transport(self, planet_id, resources=None):
+    def movement_transport(self, destination, resources=None):
         res = self.data["resources"]
         if resources is None and res["metal"] != {}:
             resources = dict()
@@ -546,7 +493,7 @@ class Planet:
         larce_cargoes_needed = 1 + int((resources['metal'] + resources['crystal'] + resources['deuterium']) / 25000)
         ships = [(c.large_cargo, larce_cargoes_needed)]
         speed = Speed['100%']
-        destination_coords = self.acc.planet_data(planet_id)["coordinate"]
+        destination_coords = destination.data["coordinate"]
         galaxy = destination_coords["galaxy"]
         system = destination_coords["system"]
         position = destination_coords["position"]

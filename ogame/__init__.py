@@ -81,7 +81,7 @@ def retry_if_logged_out(method):
         while not working:
             try:
                 working = True
-                res = method(self, *args, **kwargs)
+                return method(self, *args, **kwargs)
             except NOT_LOGGED:
                 # time.sleep(time_to_sleep)
                 attempt += 1
@@ -90,7 +90,6 @@ def retry_if_logged_out(method):
                     raise CANT_PROCESS
                 working = False
                 self.login()
-        return res
 
     return wrapper
 
@@ -108,12 +107,12 @@ def metal_mine_production(level, universe_speed=1):
 
 
 def get_planet_infos_regex(text):
-    result = re.search(r'(\w+) \[(\d+):(\d+):(\d+)\]([\d\.]+)km \((\d+)/(\d+)\)([-\d]+).+C (?:bis|to) ([-\d]+).+C',
+    result = re.search(r'(\w+) \[(\d+):(\d+):(\d+)\]([\d.]+)km \((\d+)/(\d+)\)([-\d]+).+C (?:bis|to) ([-\d]+).+C',
                        text)
     if result is not None:
         return result  # is a plenet
     else:
-        return re.search(r'(\w+) \[(\d+):(\d+):(\d+)\]([\d\.]+)km \((\d+)/(\d+)\)', text)  # is a moon
+        return re.search(r'(\w+) \[(\d+):(\d+):(\d+)\]([\d.]+)km \((\d+)/(\d+)\)', text)  # is a moon
 
 
 def get_code(name):
@@ -292,7 +291,7 @@ class OGame(object):
         res = {}
         if link is not None:
             link = link.find('span').text
-            infos = re.search(r'(\d+)\/(\d+)', link)
+            infos = re.search(r'(\d+)/(\d+)', link)
             res['colonies_count'] = parse_int(infos.group(1))
             res['colonies_maxcount'] = parse_int(infos.group(2))
             return res
@@ -557,7 +556,30 @@ class OGame(object):
                    'type': ship_id}
         self.session.post(url, data=payload)
 
-    def can_build(self, costs, planet_resources):
+    def get_traderImportExport(self):
+        """Get the ids of your planets."""
+        url = self.get_url('traderImportExport')
+        res = self.session.get(url).content
+
+        if not self.is_logged(res):
+            raise NOT_LOGGED
+        soup = BeautifulSoup(res, 'lxml')
+
+        form = soup.find('form')
+        token = form.find('input', {'name': 'token'}).get('value')
+
+        # payload = {'menge': nbr,
+        #            'modus': 1,
+        #            'token': token,
+        #            'type': ship_id}
+        # self.session.post(url, data=payload)
+        #
+        # planets = soup.findAll('div', {'class': 'smallplanet'})
+        # ids = [planet['id'].replace('planet-', '') for planet in planets]
+        # return ids
+
+    @staticmethod
+    def can_build(cls, costs, planet_resources):
         if planet_resources['metal'] >= costs[0] and planet_resources['crystal'] >= costs[1] and planet_resources['deuterium'] >= costs[2]:
             return True
         return False
@@ -965,7 +987,7 @@ class OGame(object):
         else:
             isUnderConstruction = True
 
-        res = {}
+        res = dict()
         res['img'] = link.find('img').get('src')
         res['id'] = planet_id
         res['planet_name'] = infos.group(1)

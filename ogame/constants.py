@@ -36,7 +36,7 @@ class Item:
 
     # ships
     small_cargo = Keys("small_cargo", 202, "sc", "SmallCargo")
-    large_cargo = Keys("large_cargo", 203, "ss", "LargeCargo")
+    large_cargo = Keys("large_cargo", 203, "lc", "LargeCargo")
     light_fighter = Keys("light_fighter", 204, "lf", "LightFighter")
     heavy_fighter = Keys("heavy_fighter", 205, "hf", "HeavyFighter")
     cruiser = Keys("cruiser", 206, "cr", "Cruiser")

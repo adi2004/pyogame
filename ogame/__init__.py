@@ -107,7 +107,7 @@ def metal_mine_production(level, universe_speed=1):
 
 
 def get_planet_infos_regex(text):
-    result = re.search(r'(\w+) \[(\d+):(\d+):(\d+)\]([\d.]+)km \((\d+)/(\d+)\)([-\d]+).+C (?:bis|to) ([-\d]+).+C',
+    result = re.search(r'(\w+) \[(\d+):(\d+):(\d+)\]([\d\.]+)km \((\d+)/(\d+)\)([-\d]+).+C (?:bis|à|to) ([-\d]+).+C',
                        text)
     if result is not None:
         return result  # is a plenet
@@ -132,13 +132,18 @@ def get_code(name):
 
 @for_all_methods(sandbox_decorator)
 class OGame(object):
-    def __init__(self, universe, username, password, domain='en.ogame.gameforge.com', auto_bootstrap=True, sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="./ogame.cookie"):
+    def __init__(self, universe, universe_id,universe_lang, universe_url, username, password, domain='en.ogame.gameforge.com',
+                 auto_bootstrap=True,
+                 sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="./ogame.cookie")):
         self.session = requests.session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:57.0) Gecko/20100101 Firefox/57.0'})
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36'})
         self.sandbox = sandbox
         self.sandbox_obj = sandbox_obj if sandbox_obj is not None else {}
         self.universe = universe
+        self.universe_id = universe_id
+        self.universe_lang = universe_lang
+        self.universe_url = universe_url
         self.domain = domain
         self.username = username
         self.password = password
@@ -182,21 +187,55 @@ class OGame(object):
         """Get the ogame session token."""
         if self.server_url == '':
             self.server_url = self.get_universe_url(self.universe)
-        self.load_cookies(self.session, self.cookiePath)
-        if not self.is_logged():
-            payload = {'kid': '',
-                    'uni': self.server_url,
-                    'login': self.username,
-                    'pass': self.password}
-            # time.sleep(random.uniform(1, 5))
-            res = self.session.post(self.get_url('login'), data=payload).content
-            soup = BeautifulSoup(res, 'lxml')
-            session_found = soup.find('meta', {'name': 'ogame-session'})
-            if session_found:
-                self.save_cookies(self.session, self.cookiePath)
-                self.ogame_session = session_found.get('content')
-            else:
-                raise BAD_CREDENTIALS
+
+        # 1 login to lobby
+        payload = {'kid': '',
+                   'language': self.universe_lang,
+                   'autologin': 'false',
+                   'credentials[email]': self.username,
+                   'credentials[password]': self.password}
+
+        time.sleep(random.uniform(1, 2))
+        res = self.session.post('https://lobby-api.ogame.gameforge.com/users', data=payload)
+
+        php_session_id = None
+
+        for c in res.cookies:
+            if c.name == 'PHPSESSID':
+                php_session_id = c.value
+
+        # 2 retrieve server accounts from ogame lobby session and get selected server id
+        cookie = {'PHPSESSID': php_session_id}
+
+        time.sleep(random.uniform(1, 2))
+        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/accounts', cookies=cookie)
+
+        selected_server_id = None
+        server_accounts = res.json()
+        for server_account in server_accounts:
+            if server_account['server']['number'] == self.universe_id:
+                selected_server_id = server_account['id']
+
+        # 3 retrieve the selected server url with token
+        cookie = {'PHPSESSID': php_session_id}
+
+        time.sleep(random.uniform(1, 2))
+        res = self.session.get(
+            'https://lobby-api.ogame.gameforge.com/users/me/loginLink?id={}&server[language]={}&server[number]={}'.format(
+                selected_server_id,self.universe_lang, str(self.universe_id)), cookies=cookie).json()
+
+        selected_server_url = res['url']
+
+        # 4 get the selected server page from the url
+        res = self.session.get(selected_server_url).content
+
+        soup = BeautifulSoup(res, 'lxml')
+        self.new_messages = soup.find('span', {'class': 'noMessage'}) == None
+        session_found = soup.find('meta', {'name': 'ogame-session'})
+        if session_found:
+            self.ogame_session = session_found.get('content')
+        else:
+            raise BAD_CREDENTIALS
 
     def logout(self):
         self.session.get(self.get_url('logout'))
@@ -205,7 +244,7 @@ class OGame(object):
     def is_logged(self, html=None):
         if not html:
             html = self.session.get(self.get_url('overview')).content
-        soup = BeautifulSoup(html, 'lxml')
+        soup = BeautifulSoup(html, 'html.parser')
         session = soup.find('meta', {'name': 'ogame-session'})
         if session:
             self.ogame_session = html
@@ -272,7 +311,7 @@ class OGame(object):
     def general_get_universe_speed(self, res=None):
         if not res:
             res = self.session.get(self.get_url('techtree', {'tab': 2, 'techID': 1})).content
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         if soup.find('head'):
             raise NOT_LOGGED
         spans = soup.findAll('span', {'class': 'undermark'})
@@ -306,7 +345,7 @@ class OGame(object):
         res['player_id'] = int(re.search(r'playerId="(\w+)"', str(html)).group(1))
         res['player_name'] = re.search(r'playerName="([\w\s]+)"', str(html)).group(1)
         tmp = re.search(r'textContent\[7\]="([^"]+)"', str(html)).group(1)
-        soup = BeautifulSoup(tmp, 'lxml')
+        soup = BeautifulSoup(tmp, 'html.parser')
         tmp = soup.text
         infos = re.search(r'([\d\\.]+) \(\S+ ([\d.]+) \S+ ([\d.]+)\)', tmp)
         res['points'] = parse_int(infos.group(1))
@@ -324,8 +363,8 @@ class OGame(object):
         res = self.session.get(self.get_url('resources', {'cp': planet_id})).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
-        res = dict()
+        soup = BeautifulSoup(res, 'html.parser')
+        res = {}
         res['metal_mine'] = get_nbr(soup, 'supply1')
         res['crystal_mine'] = get_nbr(soup, 'supply2')
         res['deuterium_synthesizer'] = get_nbr(soup, 'supply3')
@@ -341,7 +380,7 @@ class OGame(object):
         res = self.session.get(self.get_url('defense', {'cp': planet_id})).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         res = {}
         res['rocket_launcher'] = get_nbr(soup, 'defense401')
         res['light_laser'] = get_nbr(soup, 'defense402')
@@ -359,7 +398,7 @@ class OGame(object):
         res = self.session.get(self.get_url('shipyard', {'cp': planet_id})).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         res = {}
         res['light_fighter'] = get_nbr(soup, 'military204')
         res['heavy_fighter'] = get_nbr(soup, 'military205')
@@ -381,7 +420,7 @@ class OGame(object):
         res = self.session.get(self.get_url('station', {'cp': planet_id})).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         res = {}
         try:
             res['robotics_factory'] = get_nbr(soup, 'station14')
@@ -400,7 +439,7 @@ class OGame(object):
         res = self.session.get(self.get_url('research')).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         res = {}
         res['energy_technology'] = get_nbr(soup, 'research113')
         res['laser_technology'] = get_nbr(soup, 'research120')
@@ -431,7 +470,7 @@ class OGame(object):
             res = self.session.get(self.get_url('overview')).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         planets = soup.findAll('div', {'class': 'smallplanet'})
         ids = [planet['id'].replace('planet-', '') for planet in planets]
         return ids
@@ -442,7 +481,7 @@ class OGame(object):
             res = self.session.get(self.get_url('overview')).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         moons = soup.findAll('a', {'class': 'moonlink'})
         ids = [moon['href'].split('&cp=')[1] for moon in moons]
         return ids
@@ -453,7 +492,7 @@ class OGame(object):
             res = self.session.get(self.get_url('overview')).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         planets = soup.findAll('div', {'class': 'smallplanet'})
         for planet in planets:
             title = planet.find('a', {'class': 'planetlink'}).get('title')
@@ -474,7 +513,7 @@ class OGame(object):
         res = self.session.get(url).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         form = soup.find('form')
         token = form.find('input', {'name': 'token'}).get('value')
 
@@ -546,7 +585,7 @@ class OGame(object):
         res = self.session.get(url).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         form = soup.find('form')
         token = form.find('input', {'name': 'token'}).get('value')
 
@@ -594,7 +633,7 @@ class OGame(object):
         res = self.session.get(url).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         # is_idle = bool(soup.find('td', {'class': 'idle'}))
         # if not is_idle:
         #     return False
@@ -642,7 +681,7 @@ class OGame(object):
 
     def send_fleet(self, planet_id, ships, speed, where, mission, resources, acsDefHoldTime=0):
         def get_hidden_fields(html):
-            soup = BeautifulSoup(html, 'lxml')
+            soup = BeautifulSoup(html, 'html.parser')
             inputs = soup.findAll('input', {'type': 'hidden'})
             fields = {}
             for input_element in inputs:
@@ -683,7 +722,7 @@ class OGame(object):
         res = self.session.post(self.get_url('movement'), data=payload).content
 
         res = self.session.get(self.get_url('movement')).content
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         origin_coords = soup.find('meta', {'name': 'ogame-planet-coordinates'})['content']
         fleets = soup.findAll('div', {'class': 'fleetDetails'})
         matches = []
@@ -803,12 +842,21 @@ class OGame(object):
     #     spans = soup.findAll('span', {'class': 'reversal'})
     #     fleet_ids = [span.get('ref') for span in spans]
     #     return fleet_ids
+    def get_fleet_ids(self):
+        """Return the reversable fleet ids."""
+        res = self.session.get(self.get_url('movement')).content
+        if not self.is_logged(res):
+            raise NOT_LOGGED
+        soup = BeautifulSoup(res, 'html.parser')
+        spans = soup.findAll('span', {'class': 'reversal'})
+        fleet_ids = [span.get('ref') for span in spans]
+        return fleet_ids
 
     def get_attacks(self, checkSpyAlso=False):
         headers = {'X-Requested-With': 'XMLHttpRequest'}
         res = self.session.get(self.get_url('eventList'), params={'ajax': 1},
                                headers=headers).content
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         if soup.find('head'):
             raise NOT_LOGGED
         events = soup.findAll('tr', {'class': 'eventFleet'})
@@ -931,7 +979,7 @@ class OGame(object):
 
     def get_servers(self, domain):
         res = self.session.get('https://{}'.format(domain)).content
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         select = soup.find('select', {'id': 'serverLogin'})
         servers = {}
         for opt in select.findAll('option'):
@@ -941,19 +989,14 @@ class OGame(object):
         return servers
 
     def get_universe_url(self, universe):
-        """Get a universe name and return the server url."""
-        servers = self.get_servers(self.domain)
-        universe = universe.lower()
-        if universe not in servers:
-            raise BAD_UNIVERSE_NAME
-        return servers[universe]
+        return self.universe_url
 
     def get_server_time(self):
         """Get the ogame server time."""
         res = self.session.get(self.get_url('overview')).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         date_str = soup.find('li', {'class': 'OGameClock'}).text
         date_format = '%d.%m.%Y %H:%M:%S'
         date = datetime.datetime.strptime(date_str, date_format)
@@ -964,7 +1007,7 @@ class OGame(object):
             res = self.session.get(self.get_url('overview', {'cp': planet_id})).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         link = soup.find('div', {'id': 'planet-{}'.format(planet_id)})
         if link is not None:  # is a planet pid
             link = link.find('a')
@@ -979,7 +1022,8 @@ class OGame(object):
                 else:
                     continue
 
-        infos_label = BeautifulSoup(link['title'], 'lxml').text
+
+        infos_label = BeautifulSoup(link['title'], 'html.parser').text
         infos = get_planet_infos_regex(infos_label)
         isUnderConstruction = soup.find('table', {'class': "construction active"}).find('td', {'class': "desc timer"})
         if isUnderConstruction is None:
@@ -1014,7 +1058,7 @@ class OGame(object):
             res = self.session.get(self.get_url('overview')).content
         if not self.is_logged(res):
             raise NOT_LOGGED
-        soup = BeautifulSoup(res, 'lxml')
+        soup = BeautifulSoup(res, 'html.parser')
         footer = soup.find('div', {'id': 'siteFooter'})
         version = footer.find('a').text.strip()
         return version
@@ -1023,7 +1067,7 @@ class OGame(object):
         html = self.session.get(self.get_url('overview', {'cp': planet_id})).content
         if not self.is_logged(html):
             raise NOT_LOGGED
-        soup = BeautifulSoup(html, 'lxml')
+        soup = BeautifulSoup(html, 'html.parser')
         boxes = soup.findAll('div', {'class': 'content-box-s'})
         res = {}
         names = ['buildings', 'research', 'shipyard']
@@ -1058,7 +1102,7 @@ class OGame(object):
         html = self.session.get(self.get_url('resourceSettings', {'cp': planet_id})).content
         if not self.is_logged(html):
             raise NOT_LOGGED
-        soup = BeautifulSoup(html, 'lxml')
+        soup = BeautifulSoup(html, 'html.parser')
         options = soup.find_all('option', {'selected': True})
         res = {}
         res['metal_mine'] = options[0]['value']
@@ -1106,8 +1150,10 @@ class OGame(object):
             raise NOT_LOGGED
         return obj
 
-    def galaxy_infos_new(self, galaxy, system):
-        html = self.html_galaxy_content(galaxy, system)['galaxy']
+    #def galaxy_infos_new(self, galaxy, system):
+    #    html = self.html_galaxy_content(galaxy, system)['galaxy']
+    def galaxy_infos(self, galaxy, system):
+        html = self.galaxy_content(galaxy, system)['galaxy']
         soup = BeautifulSoup(html, 'lxml')
         rows = soup.findAll('tr', {'class': 'row'})
         res = []
@@ -1376,7 +1422,9 @@ class OGame(object):
 
     def galaxy_infos(self, galaxy, system):
         html = self.html_galaxy_content(galaxy, system)['galaxy']
-        soup = BeautifulSoup(html, 'lxml')
+        #soup = BeautifulSoup(html, 'lxml')
+        #html = self.galaxy_content(galaxy, system)['galaxy']
+        soup = BeautifulSoup(html, 'html.parser')
         rows = soup.findAll('tr', {'class': 'row'})
         res = []
         for row in rows:

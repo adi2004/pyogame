@@ -199,38 +199,44 @@ class OGame(object):
         res = self.session.post('https://lobby-api.ogame.gameforge.com/users', data=payload)
 
         php_session_id = None
-
         for c in res.cookies:
             if c.name == 'PHPSESSID':
                 php_session_id = c.value
-
-        # 2 retrieve server accounts from ogame lobby session and get selected server id
+                break
         cookie = {'PHPSESSID': php_session_id}
 
-        time.sleep(random.uniform(1, 2))
-        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/accounts', cookies=cookie)
+        res = self.session.get('https://lobby-api.ogame.gameforge.com/servers').json()
+        server_num = None
+        for server in res:
+            name = server['name'].lower()
+            if self.universe.lower() == name:
+                server_num = server['number']
+                break
 
+        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/accounts', cookies=cookie)
         selected_server_id = None
+        lang = None
         server_accounts = res.json()
         for server_account in server_accounts:
-            if server_account['server']['number'] == self.universe_id:
+            if server_account['server']['number'] == server_num:
+                lang = server_account['server']['language']
                 selected_server_id = server_account['id']
+                break
 
-        # 3 retrieve the selected server url with token
-        cookie = {'PHPSESSID': php_session_id}
 
         time.sleep(random.uniform(1, 2))
-        res = self.session.get(
-            'https://lobby-api.ogame.gameforge.com/users/me/loginLink?id={}&server[language]={}&server[number]={}'.format(
-                selected_server_id, self.universe_lang, str(self.universe_id)), cookies=cookie).json()
+        # res = self.session.get(
+        #     'https://lobby-api.ogame.gameforge.com/users/me/loginLink?id={}&server[language]={}&server[number]={}'.format(
+        #         selected_server_id, self.universe_lang, str(self.universe_id)), cookies=cookie).json()
 
+        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/loginLink?id={}&server[language]={}&server[number]={}'
+                .format(selected_server_id, lang, str(server_num)), cookies=cookie).json()
         selected_server_url = res['url']
+        b = re.search('https://(.+\.ogame\.gameforge\.com)/game', selected_server_url)
+        self.server_url = b.group(1)
 
-        # 4 get the selected server page from the url
         res = self.session.get(selected_server_url).content
-
-        soup = BeautifulSoup(res, 'lxml')
-        self.new_messages = soup.find('span', {'class': 'noMessage'}) == None
+        soup = BeautifulSoup(res, 'html.parser')
         session_found = soup.find('meta', {'name': 'ogame-session'})
         if session_found:
             self.ogame_session = session_found.get('content')
@@ -458,6 +464,24 @@ class OGame(object):
         res['shielding_technology'] = get_nbr(soup, 'research110')
         res['armour_technology'] = get_nbr(soup, 'research111')
         return res
+
+    def constructions_being_built(self, planet_id):
+        res = self.session.get(self.get_url('overview', {'cp': planet_id})).text
+        if not self.is_logged(res):
+            raise NOT_LOGGED
+        buildingCountdown = 0
+        buildingID = 0
+        researchCountdown = 0
+        researchID = 0
+        buildingCountdownMatch = re.search('getElementByIdWithCache\("Countdown"\),(\d+),', res)
+        if buildingCountdownMatch:
+            buildingCountdown = buildingCountdownMatch.group(1)
+            buildingID = re.search('onclick="cancelProduction\((\d+),', res).group(1)
+        researchCountdownMatch = re.search('getElementByIdWithCache\("researchCountdown"\),(\d+),', res)
+        if researchCountdownMatch:
+            researchCountdown = researchCountdownMatch.group(1)
+            researchID = re.search('onclick="cancelResearch\((\d+),', res).group(1)
+        return buildingID, buildingCountdown, researchID, researchCountdown
 
     def is_under_attack(self, json_obj=None):
         if not json_obj:
@@ -842,6 +866,88 @@ class OGame(object):
     #     spans = soup.findAll('span', {'class': 'reversal'})
     #     fleet_ids = [span.get('ref') for span in spans]
     #     return fleet_ids
+    def get_fleets_old(self):
+        res = self.session.get(self.get_url('movement')).content
+        if not self.is_logged(res):
+            raise NOT_LOGGED
+        fleets = []
+        soup = BeautifulSoup(res, 'html.parser')
+        divs = soup.findAll('div', {'class': 'fleetDetails'})
+        for div in divs:
+            originText = div.find('span', {'class': 'originCoords'}).find('a').text
+            coords = re.search(r'\[(\d+):(\d+):(\d+)\]', originText)
+            galaxy, system, position = coords.groups()
+            origin = (int(galaxy), int(system), int(position))
+            destText = div.find('span', {'class': 'destinationCoords'}).find('a').text
+            coords = re.search(r'\[(\d+):(\d+):(\d+)\]', destText)
+            galaxy, system, position = coords.groups()
+            dest = (int(galaxy), int(system), int(position))
+            reversal_id = None
+            reversal_span = div.find('span', {'class': 'reversal'})
+            if reversal_span:
+                reversal_id = int(reversal_span.get('ref'))
+            mission_type = int(div.get('data-mission-type'))
+            return_flight = bool(div.get('data-return-flight'))
+            arrival_time = int(div.get('data-arrival-time'))
+            ogameTimestamp = int(soup.find('meta', {'name': 'ogame-timestamp'})['content'])
+            secs = arrival_time - ogameTimestamp
+            if secs < 0: secs = 0
+            trs = div.find('table', {'class': 'fleetinfo'}).findAll('tr')
+            metal = parse_int(trs[-3].findAll('td')[1].text.strip())
+            crystal = parse_int(trs[-2].findAll('td')[1].text.strip())
+            deuterium = parse_int(trs[-1].findAll('td')[1].text.strip())
+            fleet = {
+                'id': reversal_id,
+                'origin': origin,
+                'destination': dest,
+                'mission': mission_type,
+                'return_flight': return_flight,
+                'arrive_in': secs,
+                'resources': {
+                    'metal': metal,
+                    'crystal': crystal,
+                    'deuterium': deuterium,
+                },
+                'ships': {
+                    'light_fighter': 0,
+                    'heavy_fighter': 0,
+                    'cruiser': 0,
+                    'battleship': 0,
+                    'battlecruiser': 0,
+                    'bomber': 0,
+                    'destroyer': 0,
+                    'deathstar': 0,
+                    'small_cargo': 0,
+                    'large_cargo': 0,
+                    'colony_ship': 0,
+                    'recycler': 0,
+                    'espionage_probe': 0,
+                    'solar_satellite': 0,
+                }
+            }
+            for i in range(1, len(trs)-5):
+                name = trs[i].findAll('td')[0].text.strip(' \r\t\n:')
+                short_name = ''.join(name.split())
+                code = get_code(short_name)
+                qty = parse_int(trs[i].findAll('td')[1].text.strip())
+                if code == 202: fleet['ships']['small_cargo']     = qty
+                if code == 203: fleet['ships']['large_cargo']     = qty
+                if code == 204: fleet['ships']['light_fighter']   = qty
+                if code == 205: fleet['ships']['heavy_fighter']   = qty
+                if code == 206: fleet['ships']['cruiser']         = qty
+                if code == 207: fleet['ships']['battleship']      = qty
+                if code == 208: fleet['ships']['colony_ship']     = qty
+                if code == 209: fleet['ships']['recycler']        = qty
+                if code == 210: fleet['ships']['espionage_probe'] = qty
+                if code == 211: fleet['ships']['bomber']          = qty
+                if code == 212: fleet['ships']['solar_satellite'] = qty
+                if code == 213: fleet['ships']['destroyer']       = qty
+                if code == 214: fleet['ships']['deathstar']       = qty
+                if code == 215: fleet['ships']['battlecruiser']   = qty
+            fleets.append(fleet)
+        return fleets
+
+
     def get_fleet_ids(self):
         """Return the reversable fleet ids."""
         res = self.session.get(self.get_url('movement')).content
@@ -978,13 +1084,13 @@ class OGame(object):
             return url
 
     def get_servers(self, domain):
-        res = self.session.get('https://{}'.format(domain)).content
-        soup = BeautifulSoup(res, 'html.parser')
-        select = soup.find('select', {'id': 'serverLogin'})
+        res = self.session.get('https://lobby-api.ogame.gameforge.com/servers').json()
         servers = {}
-        for opt in select.findAll('option'):
-            url = opt.get('value')
-            name = opt.string.strip().lower()
+        for server in res:
+            name = server['name'].lower()
+            lang = server['language']
+            num = server['number']
+            url = 's{}-{}.ogame.gameforge.com'.format(num, lang)
             servers[name] = url
         return servers
 

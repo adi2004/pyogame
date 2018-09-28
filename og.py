@@ -31,7 +31,7 @@ class Account:
         pc.yellow("Logging in with %s" % user, end = " ")
 
         try:
-            self.ogame = OGame(universe, user, 148, "en", "https://s148-en.ogame.gameforge.com/game", password, cookiePath = cookiePath)
+            self.ogame = OGame(universe, user, password)
         except Exception as e:
            pp.red("Failed to login %s. Exception: " % user + str(e))
         else:

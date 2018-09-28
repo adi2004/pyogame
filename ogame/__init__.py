@@ -132,30 +132,46 @@ def get_code(name):
 
 @for_all_methods(sandbox_decorator)
 class OGame(object):
-    def __init__(self, universe, universe_id, universe_lang, universe_url, username, password, domain='en.ogame.gameforge.com',
-                 auto_bootstrap=True,
-                 sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="./ogame.cookie"):
+    def __init__(self, universe, username, password, domain='en.ogame.gameforge.com', auto_bootstrap=True, sandbox=False, sandbox_obj=None):
         self.session = requests.session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36'})
+        self.session.headers.update({'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'})
         self.sandbox = sandbox
         self.sandbox_obj = sandbox_obj if sandbox_obj is not None else {}
         self.universe = universe
-        self.universe_id = universe_id
-        self.universe_lang = universe_lang
-        self.universe_url = universe_url
         self.domain = domain
         self.username = username
         self.password = password
-        self.cookiePath = cookiePath
         self.universe_speed = 1
         self.server_url = ''
-        self.server_tz = 'GMT+0'
+        self.server_tz = 'GMT+1'
         if auto_bootstrap:
             self.login()
             self.universe_speed = self.general_get_universe_speed()
-        if use_proxy:
-            self.session.proxies.update(get_proxies(proxy_port))
+
+    # def __init__(self, universe, universe_id, universe_lang, universe_url, username, password, domain='en.ogame.gameforge.com',
+    #              auto_bootstrap=True,
+    #              sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="./ogame.cookie"):
+    #     self.session = requests.session()
+    #     self.session.headers.update({
+    #         'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36'})
+    #     self.sandbox = sandbox
+    #     self.sandbox_obj = sandbox_obj if sandbox_obj is not None else {}
+    #     self.universe = universe
+    #     self.universe_id = universe_id
+    #     self.universe_lang = universe_lang
+    #     self.universe_url = universe_url
+    #     self.domain = domain
+    #     self.username = username
+    #     self.password = password
+    #     self.cookiePath = cookiePath
+    #     self.universe_speed = 1
+    #     self.server_url = ''
+    #     self.server_tz = 'GMT+0'
+    #     if auto_bootstrap:
+    #         self.login()
+    #         self.universe_speed = self.general_get_universe_speed()
+    #     if use_proxy:
+    #         self.session.proxies.update(get_proxies(proxy_port))
 
     def save_cookies(self, session, filename):
         if not os.path.isdir(os.path.dirname(filename)):
@@ -185,8 +201,59 @@ class OGame(object):
 
     def login(self):
         """Get the ogame session token."""
-        if self.server_url == '':
-            self.server_url = self.get_universe_url(self.universe)
+        payload = {'kid': '',
+                   'language': 'en',
+                   'autologin': 'false',
+                   'credentials[email]': self.username,
+                   'credentials[password]': self.password}
+        time.sleep(random.uniform(1, 2))
+        res = self.session.post('https://lobby-api.ogame.gameforge.com/users', data=payload)
+
+        php_session_id = None
+        for c in res.cookies:
+            if c.name == 'PHPSESSID':
+                php_session_id = c.value
+                break
+        cookie = {'PHPSESSID': php_session_id}
+
+        res = self.session.get('https://lobby-api.ogame.gameforge.com/servers').json()
+        server_num = None
+        for server in res:
+            name = server['name'].lower()
+            if self.universe.lower() == name:
+                server_num = server['number']
+                break
+
+        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/accounts', cookies=cookie)
+        selected_server_id = None
+        lang = None
+        server_accounts = res.json()
+        for server_account in server_accounts:
+            if server_account['server']['number'] == server_num:
+                lang = server_account['server']['language']
+                selected_server_id = server_account['id']
+                break
+
+
+        time.sleep(random.uniform(1, 2))
+        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/loginLink?id={}&server[language]={}&server[number]={}'
+                .format(selected_server_id, lang, str(server_num)), cookies=cookie).json()
+        selected_server_url = res['url']
+        b = re.search('https://(.+\.ogame\.gameforge\.com)/game', selected_server_url)
+        self.server_url = b.group(1)
+
+        res = self.session.get(selected_server_url).content
+        soup = BeautifulSoup(res, 'html.parser')
+        session_found = soup.find('meta', {'name': 'ogame-session'})
+        if session_found:
+            self.ogame_session = session_found.get('content')
+        else:
+            raise BAD_CREDENTIALS
+
+    def login_old(self):
+        """Get the ogame session token."""
+        # if self.server_url == '':
+        #     self.server_url = self.get_universe_url(self.universe)
 
         # 1 login to lobby
         payload = {'kid': '',

@@ -132,9 +132,9 @@ def get_code(name):
 
 @for_all_methods(sandbox_decorator)
 class OGame(object):
-    def __init__(self, universe, universe_id,universe_lang, universe_url, username, password, domain='en.ogame.gameforge.com',
+    def __init__(self, universe, universe_id, universe_lang, universe_url, username, password, domain='en.ogame.gameforge.com',
                  auto_bootstrap=True,
-                 sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="./ogame.cookie")):
+                 sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="./ogame.cookie"):
         self.session = requests.session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36'})
@@ -222,7 +222,7 @@ class OGame(object):
         time.sleep(random.uniform(1, 2))
         res = self.session.get(
             'https://lobby-api.ogame.gameforge.com/users/me/loginLink?id={}&server[language]={}&server[number]={}'.format(
-                selected_server_id,self.universe_lang, str(self.universe_id)), cookies=cookie).json()
+                selected_server_id, self.universe_lang, str(self.universe_id)), cookies=cookie).json()
 
         selected_server_url = res['url']
 

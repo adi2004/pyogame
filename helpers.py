@@ -17,8 +17,6 @@ class col:
     UNDERLINE = '\033[4m'
     ENDC = '\033[0m'
 
-
-
 def format_number(number, max_capacity = 0):
     current = locale.getlocale(locale.LC_ALL)
     locale.setlocale(locale.LC_ALL, 'ro_RO.UTF-8')
@@ -50,4 +48,3 @@ def merge_dict(new_dict, old_dict):
             merge_dict(new_dict[k], old_dict[k])
         else:
             new_dict[k] = old_dict[k]
-

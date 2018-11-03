@@ -12,6 +12,7 @@ import pickle
 import random
 import os
 import inspect
+import logging
 
 from ogame import constants
 from ogame.errors import BAD_UNIVERSE_NAME, BAD_DEFENSE_ID, NOT_LOGGED, BAD_CREDENTIALS, CANT_PROCESS, BAD_BUILDING_ID, \
@@ -20,6 +21,12 @@ from bs4 import BeautifulSoup
 from dateutil import tz
 from ogame.util import get_random_user_agent
 
+logging.basicConfig(level=0)
+log = logging.getLogger(__name__)
+log.debug("Logger initialized...")
+
+# hide crappy output
+logging.getLogger("chardet.charsetprober").setLevel(50)
 
 def get_proxies(port=9050):
     proxies = {
@@ -90,7 +97,6 @@ def retry_if_logged_out(method):
                     raise CANT_PROCESS
                 working = False
                 self.login()
-
     return wrapper
 
 
@@ -132,56 +138,34 @@ def get_code(name):
 
 @for_all_methods(sandbox_decorator)
 class OGame(object):
-    def __init__(self, universe, username, password, domain='en.ogame.gameforge.com', auto_bootstrap=True, sandbox=False, sandbox_obj=None):
-        self.session = requests.session()
-        self.session.headers.update({'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'})
+    def __init__(self, universe, username, password, domain='en.ogame.gameforge.com', language="en", auto_bootstrap=True, sandbox=False, sandbox_obj=None):
         self.sandbox = sandbox
         self.sandbox_obj = sandbox_obj if sandbox_obj is not None else {}
         self.universe = universe
         self.domain = domain
+        self.language = language
         self.username = username
         self.password = password
-        self.universe_speed = 1
+        self.universe_speed = 5
         self.server_url = ''
         self.server_tz = 'GMT+1'
+
+        self.session = requests.session()
+        self.session.headers.update({'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'})
+
         if auto_bootstrap:
             self.login()
             self.universe_speed = self.general_get_universe_speed()
 
-    # def __init__(self, universe, universe_id, universe_lang, universe_url, username, password, domain='en.ogame.gameforge.com',
-    #              auto_bootstrap=True,
-    #              sandbox=False, sandbox_obj=None, use_proxy=False, proxy_port=9050, cookiePath="./ogame.cookie"):
-    #     self.session = requests.session()
-    #     self.session.headers.update({
-    #         'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36'})
-    #     self.sandbox = sandbox
-    #     self.sandbox_obj = sandbox_obj if sandbox_obj is not None else {}
-    #     self.universe = universe
-    #     self.universe_id = universe_id
-    #     self.universe_lang = universe_lang
-    #     self.universe_url = universe_url
-    #     self.domain = domain
-    #     self.username = username
-    #     self.password = password
-    #     self.cookiePath = cookiePath
-    #     self.universe_speed = 1
-    #     self.server_url = ''
-    #     self.server_tz = 'GMT+0'
-    #     if auto_bootstrap:
-    #         self.login()
-    #         self.universe_speed = self.general_get_universe_speed()
-    #     if use_proxy:
-    #         self.session.proxies.update(get_proxies(proxy_port))
-
-    def save_cookies(self, session, filename):
-        if not os.path.isdir(os.path.dirname(filename)):
-            return False
+    def save_cookies(self):
+        filename = self.username + ".json"
         with open(filename, 'wb') as f:
-            f.truncate()
-            pickle.dump(session.cookies._cookies, f)
+            pickle.dump(self.session.cookies, f)
 
-    def load_cookies(self, session, filename):
-        if not os.path.isfile(filename):
+    def load_cookies(self):
+        filename = self.username + ".json"
+        if not os.path.exists(filename):
+            log.warning("Unable to load cookies file " + filename)
             return False
 
         with open(filename, "rb") as f:
@@ -192,15 +176,19 @@ class OGame(object):
                 f.truncate()
             except:
                 return False
-            if cookies:
-                jar = requests.cookies.RequestsCookieJar()
-                jar._cookies = cookies
-                session.cookies = jar
+            if type(cookies) is requests.cookies.RequestsCookieJar:
+                self.session.cookies = cookies
+                log.info("Cookies loaded succesfuly!")
             else:
                 return False
 
     def login(self):
         """Get the ogame session token."""
+        if self.server_url == '':
+            self.server_url = self.get_universe_url(self.universe)
+        self.load_cookies()
+        if self.is_logged():
+            return
         payload = {'kid': '',
                    'language': 'en',
                    'autologin': 'false',
@@ -209,13 +197,6 @@ class OGame(object):
         time.sleep(random.uniform(1, 2))
         res = self.session.post('https://lobby-api.ogame.gameforge.com/users', data=payload)
 
-        php_session_id = None
-        for c in res.cookies:
-            if c.name == 'PHPSESSID':
-                php_session_id = c.value
-                break
-        cookie = {'PHPSESSID': php_session_id}
-
         res = self.session.get('https://lobby-api.ogame.gameforge.com/servers').json()
         server_num = None
         for server in res:
@@ -224,7 +205,7 @@ class OGame(object):
                 server_num = server['number']
                 break
 
-        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/accounts', cookies=cookie)
+        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/accounts')
         selected_server_id = None
         lang = None
         server_accounts = res.json()
@@ -234,79 +215,18 @@ class OGame(object):
                 selected_server_id = server_account['id']
                 break
 
-
         time.sleep(random.uniform(1, 2))
         res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/loginLink?id={}&server[language]={}&server[number]={}'
-                .format(selected_server_id, lang, str(server_num)), cookies=cookie).json()
+                .format(selected_server_id, lang, str(server_num))).json()
         selected_server_url = res['url']
         b = re.search('https://(.+\.ogame\.gameforge\.com)/game', selected_server_url)
         self.server_url = b.group(1)
 
         res = self.session.get(selected_server_url).content
         soup = BeautifulSoup(res, 'html.parser')
-        session_found = soup.find('meta', {'name': 'ogame-session'})
-        if session_found:
-            self.ogame_session = session_found.get('content')
-        else:
-            raise BAD_CREDENTIALS
-
-    def login_old(self):
-        """Get the ogame session token."""
-        # if self.server_url == '':
-        #     self.server_url = self.get_universe_url(self.universe)
-
-        # 1 login to lobby
-        payload = {'kid': '',
-                   'language': self.universe_lang,
-                   'autologin': 'false',
-                   'credentials[email]': self.username,
-                   'credentials[password]': self.password}
-
-        time.sleep(random.uniform(1, 2))
-        res = self.session.post('https://lobby-api.ogame.gameforge.com/users', data=payload)
-
-        php_session_id = None
-        for c in res.cookies:
-            if c.name == 'PHPSESSID':
-                php_session_id = c.value
-                break
-        cookie = {'PHPSESSID': php_session_id}
-
-        res = self.session.get('https://lobby-api.ogame.gameforge.com/servers').json()
-        server_num = None
-        for server in res:
-            name = server['name'].lower()
-            if self.universe.lower() == name:
-                server_num = server['number']
-                break
-
-        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/accounts', cookies=cookie)
-        selected_server_id = None
-        lang = None
-        server_accounts = res.json()
-        for server_account in server_accounts:
-            if server_account['server']['number'] == server_num:
-                lang = server_account['server']['language']
-                selected_server_id = server_account['id']
-                break
-
-
-        time.sleep(random.uniform(1, 2))
-        # res = self.session.get(
-        #     'https://lobby-api.ogame.gameforge.com/users/me/loginLink?id={}&server[language]={}&server[number]={}'.format(
-        #         selected_server_id, self.universe_lang, str(self.universe_id)), cookies=cookie).json()
-
-        res = self.session.get('https://lobby-api.ogame.gameforge.com/users/me/loginLink?id={}&server[language]={}&server[number]={}'
-                .format(selected_server_id, lang, str(server_num)), cookies=cookie).json()
-        selected_server_url = res['url']
-        b = re.search('https://(.+\.ogame\.gameforge\.com)/game', selected_server_url)
-        self.server_url = b.group(1)
-
-        res = self.session.get(selected_server_url).content
-        soup = BeautifulSoup(res, 'html.parser')
-        session_found = soup.find('meta', {'name': 'ogame-session'})
-        if session_found:
-            self.ogame_session = session_found.get('content')
+        session = soup.find('meta', {'name': 'ogame-session'})
+        if session is not None:
+            self.save_cookies()
         else:
             raise BAD_CREDENTIALS
 
@@ -319,8 +239,7 @@ class OGame(object):
             html = self.session.get(self.get_url('overview')).content
         soup = BeautifulSoup(html, 'html.parser')
         session = soup.find('meta', {'name': 'ogame-session'})
-        if session:
-            self.ogame_session = html
+
         return session is not None
 
     def html_get_page_content(self, page='overview', cp=None):
@@ -381,9 +300,8 @@ class OGame(object):
         }
         return result
 
-    def general_get_universe_speed(self, res=None):
-        if not res:
-            res = self.session.get(self.get_url('techtree', {'tab': 2, 'techID': 1})).content
+    def general_get_universe_speed(self):
+        res = self.session.get(self.get_url('techtree', {'tab': 2, 'techID': 1})).content
         soup = BeautifulSoup(res, 'html.parser')
         if soup.find('head'):
             raise NOT_LOGGED
@@ -924,15 +842,6 @@ class OGame(object):
             missions.append(mission)
         return missions
 
-    # def get_fleet_ids(self):
-    #     """Return the reversable fleet ids."""
-    #     res = self.session.get(self.get_url('movement')).content
-    #     if not self.is_logged(res):
-    #         raise NOT_LOGGED
-    #     soup = BeautifulSoup(res, 'lxml')
-    #     spans = soup.findAll('span', {'class': 'reversal'})
-    #     fleet_ids = [span.get('ref') for span in spans]
-    #     return fleet_ids
     def get_fleets_old(self):
         res = self.session.get(self.get_url('movement')).content
         if not self.is_logged(res):
@@ -1136,10 +1045,6 @@ class OGame(object):
         if page == 'login':
             return 'https://{}/main/login'.format(self.domain)
         else:
-            # timeout = random.randrange(100, 300)
-            # print "Waiting " + str(timeout) + "ms"
-            # time.sleep(timeout / 1000.0)
-
             if self.server_url == '':
                 self.server_url = self.get_universe_url(self.universe)
             url = 'https://{}/game/index.php?page={}'.format(self.server_url, page)
@@ -1150,19 +1055,25 @@ class OGame(object):
                 url += '&' + '&'.join(arr)
             return url
 
-    def get_servers(self, domain):
+    def get_servers(self):
         res = self.session.get('https://lobby-api.ogame.gameforge.com/servers').json()
         servers = {}
         for server in res:
+            if server["language"] != self.language:
+                continue
             name = server['name'].lower()
-            lang = server['language']
             num = server['number']
-            url = 's{}-{}.ogame.gameforge.com'.format(num, lang)
+            url = 's{}-{}.ogame.gameforge.com'.format(num, self.language)
             servers[name] = url
         return servers
 
     def get_universe_url(self, universe):
-        return self.universe_url
+        """Get a universe name and return the server url."""
+        servers = self.get_servers()
+        universe = universe.lower()
+        if universe not in servers:
+            raise BAD_UNIVERSE_NAME
+        return servers[universe]
 
     def get_server_time(self):
         """Get the ogame server time."""

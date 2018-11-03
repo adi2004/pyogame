@@ -27,7 +27,7 @@ class Account:
     def __init__(self):
         print("Account.__init__")
 
-    def login(self, universe, user, password, cookiePath = ""):
+    def login(self, universe, user, password):
         pc.yellow("Logging in with %s" % user, end = " ")
 
         try:
@@ -170,8 +170,8 @@ class Planet:
         merge_dict(self.data, new_data)
 
     def pp_name(self):
-        #TODO: not used, remove
-        pp("%5s" % self.name())
+        #not used
+        pp("s" % self.name())
 
     #
     # Fetching functions (reads remote account)
@@ -510,8 +510,8 @@ class Planet:
     def movement_reverse_transport(self, planet, resources=None):
         planet.movement_transport(self.id(), resources)
 
-    def movement_expedition(self, large_cargo_count=200):
-        """send expedition with 200 LC"""
+    def movement_expedition(self, large_cargo_count=350):
+        """send expedition with LC"""
         ships = [(c.espionage_probe, 1), (c.large_cargo, large_cargo_count)]
         speed = Speed['100%']
         galaxy = self.ogame.get_planet_infos(self.id())["coordinate"]["galaxy"]
